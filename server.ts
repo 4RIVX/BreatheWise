@@ -9,9 +9,36 @@ async function startServer() {
 
   if (config.nodeEnv === "production") {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("/{*path}", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    const indexPath = path.join(distPath, "index.html");
+    const fs = await import("node:fs");
+
+    app.get("/healthz", (_req, res) => {
+      res.status(200).send("OK");
+    });
+
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+    }
+
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        res.status(404).json({ error: "API endpoint not found" });
+        return;
+      }
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send(`
+          <!DOCTYPE html>
+          <html>
+            <head><title>BreatheWise</title></head>
+            <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+              <h1>BreatheWise is starting up...</h1>
+              <p>The application assets are building or initializing. Please refresh in a moment.</p>
+            </body>
+          </html>
+        `);
+      }
     });
   } else {
     const { createServer: createViteServer } = await import("vite");

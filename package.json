@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
-    "start": "node server.ts",
+    "start": "tsx server.ts",
     "lint": "tsc --noEmit && eslint .",
     "test": "vitest run",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" server.ts \"server/**/*.ts\""
