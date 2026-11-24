@@ -1,0 +1,291 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global catch-all deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection health check document (read-only)
+    match /test/connection {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    // Helper primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Validation blueprint: UserProfile
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'profileId', 'householdSize',
+          'city', 'state', 'commutePreference', 'outdoorSchedule',
+          'hasHepaPurifier', 'purifierCadrM3h', 'language', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'profileId', 'householdSize',
+          'city', 'state', 'commutePreference', 'outdoorSchedule',
+          'hasHepaPurifier', 'purifierCadrM3h', 'language', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.profileId in ['children', 'respiratory', 'seniors', 'commuter', 'general']
+        && data.householdSize is int && data.householdSize >= 1 && data.householdSize <= 20
+        && data.city is string && data.city.size() >= 1 && data.city.size() <= 80
+        && data.state is string && data.state.size() >= 1 && data.state.size() <= 80
+        && data.commutePreference in ['metro_rail', 'bus', 'carpool', 'two_wheeler', 'car', 'walk_cycle', 'remote']
+        && data.outdoorSchedule in ['early_morning', 'midday', 'evening', 'flexible']
+        && data.hasHepaPurifier is bool
+        && (data.purifierCadrM3h is int || data.purifierCadrM3h is float)
+        && data.purifierCadrM3h >= 0 && data.purifierCadrM3h <= 2500
+        && data.language in ['en', 'ta']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation blueprint: UserRoutine
+    function isValidUserRoutine(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'title', 'description', 'category', 'co2SavedKg',
+          'exposureNote', 'completedToday', 'weeklyCompletions', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'title', 'description', 'category', 'co2SavedKg',
+          'exposureNote', 'completedToday', 'weeklyCompletions', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 100
+        && data.description is string && data.description.size() >= 2 && data.description.size() <= 300
+        && data.category in ['Mobility', 'Heating', 'Ventilation', 'Community', 'Energy', 'Waste']
+        && (data.co2SavedKg is int || data.co2SavedKg is float)
+        && data.co2SavedKg >= 0 && data.co2SavedKg <= 1000
+        && data.exposureNote is string && data.exposureNote.size() >= 2 && data.exposureNote.size() <= 160
+        && data.completedToday is bool
+        && data.weeklyCompletions is int && data.weeklyCompletions >= 0 && data.weeklyCompletions <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation blueprint: EcoTripLog
+    function isValidEcoTripLog(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'distanceKm', 'originalMode', 'alternativeMode',
+          'journeys', 'co2AvoidedKg', 'factorVersion', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'distanceKm', 'originalMode', 'alternativeMode',
+          'journeys', 'co2AvoidedKg', 'factorVersion', 'createdAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && (data.distanceKm is int || data.distanceKm is float)
+        && data.distanceKm > 0 && data.distanceKm <= 2000
+        && data.originalMode is string && data.originalMode.size() >= 2 && data.originalMode.size() <= 60
+        && data.alternativeMode is string && data.alternativeMode.size() >= 2 && data.alternativeMode.size() <= 60
+        && data.journeys is int && data.journeys >= 1 && data.journeys <= 365
+        && (data.co2AvoidedKg is int || data.co2AvoidedKg is float)
+        && data.co2AvoidedKg >= -5000 && data.co2AvoidedKg <= 50000
+        && data.factorVersion is string && data.factorVersion.size() >= 2 && data.factorVersion.size() <= 60
+        && data.createdAt is timestamp;
+    }
+
+    // Validation blueprint: SmogReport
+    function isValidSmogReport(data) {
+      return data.keys().hasAll([
+          'authorUid', 'city', 'state', 'approximateLocation',
+          'sourceCategory', 'severity', 'description', 'observedTimeLabel',
+          'moderationStatus', 'confirmationsCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'authorUid', 'city', 'state', 'approximateLocation',
+          'sourceCategory', 'severity', 'description', 'observedTimeLabel',
+          'moderationStatus', 'confirmationsCount', 'photoDataUrl', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.authorUid)
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.state is string && data.state.size() >= 2 && data.state.size() <= 80
+        && data.approximateLocation is string && data.approximateLocation.size() >= 2 && data.approximateLocation.size() <= 120
+        && data.sourceCategory in [
+          'Traffic emissions', 'Industrial emissions', 'Waste burning',
+          'Construction dust', 'Biomass burning', 'Other'
+        ]
+        && data.severity in ['Mild', 'Moderate', 'Severe']
+        && data.description is string && data.description.size() >= 5 && data.description.size() <= 400
+        && data.observedTimeLabel is string && data.observedTimeLabel.size() >= 2 && data.observedTimeLabel.size() <= 60
+        && data.moderationStatus in ['UNVERIFIED', 'REVIEWED', 'FLAGGED']
+        && data.confirmationsCount is int && data.confirmationsCount >= 0 && data.confirmationsCount <= 100000
+        && (!('photoDataUrl' in data) || (
+          data.photoDataUrl is string
+          && data.photoDataUrl.size() <= 80000
+          && data.photoDataUrl.matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')
+        ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation blueprint: SmogConfirmation
+    function isValidSmogConfirmation(data, reportId, uid) {
+      return data.keys().hasAll(['uid', 'reportId', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'reportId', 'createdAt'])
+        && isValidId(data.uid)
+        && isValidId(data.reportId)
+        && data.uid == uid
+        && data.uid == request.auth.uid
+        && data.reportId == reportId
+        && data.createdAt is timestamp;
+    }
+
+    // Admins collection (read-only by self)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isOwner(adminId);
+      allow list, write: if false;
+    }
+
+    // Private User Profiles (PII isolated to owner)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'profileId', 'householdSize', 'city', 'state',
+          'commutePreference', 'outdoorSchedule', 'hasHepaPurifier',
+          'purifierCadrM3h', 'language', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // User Low-Emission Routines subcollection
+      match /routines/{routineId} {
+        allow get: if isValidId(userId) && isValidId(routineId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(routineId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidUserRoutine(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(routineId)
+          && isOwner(userId)
+          && isValidUserRoutine(incoming(), userId)
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'description', 'category', 'co2SavedKg',
+            'exposureNote', 'completedToday', 'weeklyCompletions', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(routineId) && isOwner(userId);
+      }
+
+      // User Eco Trip Logs subcollection
+      match /ecoLogs/{logId} {
+        allow get: if isValidId(userId) && isValidId(logId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(logId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidEcoTripLog(incoming(), userId)
+          && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(logId) && isOwner(userId);
+      }
+    }
+
+    // Community Smog Watch Reports (publicly readable without PII; authenticated creation)
+    match /smogReports/{reportId} {
+      allow get: if isValidId(reportId) && existing().moderationStatus != 'FLAGGED';
+      allow list: if resource.data.moderationStatus in ['UNVERIFIED', 'REVIEWED'];
+
+      allow create: if isValidId(reportId)
+        && isVerifiedUser()
+        && isValidSmogReport(incoming())
+        && incoming().authorUid == request.auth.uid
+        && incoming().moderationStatus == 'UNVERIFIED'
+        && incoming().confirmationsCount == 1
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(reportId)
+        && isVerifiedUser()
+        && isValidSmogReport(incoming())
+        && incoming().authorUid == existing().authorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Admin moderation update
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['moderationStatus', 'updatedAt']))
+          ||
+          // Action 2: Atomic single-user confirmation increment paired with /confirmations/{uid}
+          (
+            existing().moderationStatus != 'FLAGGED'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['confirmationsCount', 'updatedAt'])
+            && incoming().confirmationsCount == existing().confirmationsCount + 1
+            && !exists(/databases/$(database)/documents/smogReports/$(reportId)/confirmations/$(request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/smogReports/$(reportId)/confirmations/$(request.auth.uid))
+          )
+        );
+
+      allow delete: if isValidId(reportId)
+        && ((isVerifiedUser() && existing().authorUid == request.auth.uid) || isAdmin());
+
+      // Confirmation records preventing duplicate confirmations
+      match /confirmations/{uid} {
+        allow get: if isValidId(reportId) && isValidId(uid) && isOwner(uid);
+        allow list: if false;
+        allow create: if isValidId(reportId)
+          && isValidId(uid)
+          && isOwner(uid)
+          && exists(/databases/$(database)/documents/smogReports/$(reportId))
+          && isValidSmogConfirmation(incoming(), reportId, uid)
+          && incoming().createdAt == request.time
+          && getAfter(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount
+             == get(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount + 1;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

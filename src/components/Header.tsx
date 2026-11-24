@@ -1,44 +1,49 @@
 import React from "react";
+import type { TranslationBundle } from "../domain/i18n";
 
-export type SectionId = "overview" | "reports" | "indoor" | "routines";
+export type SectionId =
+  "dashboard" | "guardian" | "planner" | "indoor" | "mobility" | "smog-watch";
 
 interface HeaderProps {
   activeSection: SectionId;
   onNavigate: (section: SectionId) => void;
   onOpenReportModal: () => void;
+  t: TranslationBundle;
 }
-
-const NAV_ITEMS: { id: SectionId; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "reports", label: "Smog Reports" },
-  { id: "indoor", label: "Indoor Air" },
-  { id: "routines", label: "Low-Emission" },
-];
 
 export const Header: React.FC<HeaderProps> = ({
   activeSection,
   onNavigate,
   onOpenReportModal,
+  t,
 }) => {
+  const navItems: { id: SectionId; label: string }[] = [
+    { id: "dashboard", label: t.nav.dashboard },
+    { id: "guardian", label: t.nav.guardian },
+    { id: "indoor", label: t.nav.indoor },
+    { id: "mobility", label: t.nav.mobility },
+    { id: "smog-watch", label: t.nav.smogWatch },
+  ];
+
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-200">
       <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between gap-8">
         <a
-          href="#overview"
+          href="#dashboard"
           onClick={(e) => {
             e.preventDefault();
-            onNavigate("overview");
+            onNavigate("dashboard");
           }}
           className="text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700"
         >
-          BreatheWise
+          {t.brand}
         </a>
 
         <nav
           aria-label="Primary navigation"
           className="hidden md:flex items-center gap-6"
         >
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
               <button
@@ -63,16 +68,16 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onOpenReportModal}
             className="px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
           >
-            Report Smog
+            {t.actions.reportSmog}
           </button>
         </div>
       </div>
 
       <nav
         aria-label="Mobile navigation"
-        className="flex md:hidden items-center gap-4 px-6 py-2 border-t border-slate-100 overflow-x-auto"
+        className="flex md:hidden items-center gap-3.5 px-4 py-2 border-t border-slate-100 overflow-x-auto"
       >
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const isActive = activeSection === item.id;
           return (
             <button

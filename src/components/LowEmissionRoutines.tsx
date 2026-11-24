@@ -1,14 +1,18 @@
 import React, { useMemo, useState } from "react";
 import { Check, Plus } from "lucide-react";
-import type {
-  LowEmissionRoutine,
-  RoutineCategory,
-} from "../types/breathewise";
+import type { FirestoreRoutineItem } from "../firebase/firestoreService";
+import type { TranslationBundle } from "../domain/i18n";
+
+export type RoutineCategory = FirestoreRoutineItem["category"];
 
 interface LowEmissionRoutinesProps {
-  routines: LowEmissionRoutine[];
-  onToggleRoutine: (id: string) => void;
-  onAddRoutine: (routine: Omit<LowEmissionRoutine, "id" | "completed">) => void;
+  routines: FirestoreRoutineItem[];
+  onToggleRoutine: (routine: FirestoreRoutineItem) => void;
+  onAddRoutine: (
+    routine: Omit<FirestoreRoutineItem, "id" | "uid">
+  ) => Promise<void> | void;
+  isSignedIn: boolean;
+  t: TranslationBundle;
 }
 
 const CATEGORIES: ("All" | RoutineCategory)[] = [
@@ -16,6 +20,8 @@ const CATEGORIES: ("All" | RoutineCategory)[] = [
   "Mobility",
   "Heating",
   "Ventilation",
+  "Energy",
+  "Waste",
   "Community",
 ];
 
@@ -23,14 +29,20 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
   routines,
   onToggleRoutine,
   onAddRoutine,
+  isSignedIn,
+  t,
 }) => {
-  const [categoryFilter, setCategoryFilter] = useState<
-    "All" | RoutineCategory
-  >("All");
+  const [categoryFilter, setCategoryFilter] = useState<"All" | RoutineCategory>(
+    "All"
+  );
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState<RoutineCategory>("Mobility");
   const [newDesc, setNewDesc] = useState("");
+  const [newCo2, setNewCo2] = useState<number>(1.5);
+  const [newExposureNote, setNewExposureNote] = useState(
+    "Reduces local combustion or roadside exposure"
+  );
 
   const filteredRoutines = useMemo(() => {
     if (categoryFilter === "All") return routines;
@@ -40,30 +52,30 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
   const totals = useMemo(() => {
     return routines.reduce(
       (acc, r) => {
-        if (r.completed) {
-          acc.pm25 += r.pm25AvoidedGrams;
-          acc.co2 += r.co2SavedKg;
-          acc.cleanHours += r.cleanAirHours;
-          acc.count += 1;
+        if (r.completedToday) {
+          acc.co2Today += r.co2SavedKg;
+          acc.completedToday += 1;
         }
+        acc.weeklyCompletions += r.weeklyCompletions;
+        acc.weeklyCo2 += r.co2SavedKg * r.weeklyCompletions;
         return acc;
       },
-      { pm25: 0, co2: 0, cleanHours: 0, count: 0 }
+      { co2Today: 0, completedToday: 0, weeklyCompletions: 0, weeklyCo2: 0 }
     );
   }, [routines]);
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    onAddRoutine({
+    await onAddRoutine({
       title: newTitle.trim(),
       description:
-        newDesc.trim() ||
-        "Custom household low-emission habit logged for winter smog reduction.",
+        newDesc.trim() || "Custom household low-emission habit tracked daily.",
       category: newCategory,
-      pm25AvoidedGrams: 1.4,
-      co2SavedKg: 1.8,
-      cleanAirHours: 1.5,
+      co2SavedKg: Math.max(0, Number(newCo2) || 0),
+      exposureNote: newExposureNote.trim() || "Low-emission household habit",
+      completedToday: true,
+      weeklyCompletions: 1,
     });
     setNewTitle("");
     setNewDesc("");
@@ -78,10 +90,14 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-200">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">
-            Low-Emission Routines & Environmental Impact
+            {t.sections.routinesTitle}
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Daily winter household actions that cut fine particulate emissions and increase clean-air exposure hours.
+            Track daily clean-air routines and weekly habit consistency{" "}
+            {isSignedIn
+              ? "(synced to Firestore)"
+              : "(local preview until sign-in)"}
+            .
           </p>
         </div>
 
@@ -91,47 +107,46 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
           className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          {showAddForm ? "Close Form" : "Add Custom Habit"}
+          {showAddForm ? "Close Form" : "Add Custom Routine"}
         </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 py-5 border-b border-slate-200">
         <div>
           <p className="text-xs font-medium text-slate-500">
-            Direct PM2.5 Avoided Today
+            Daily Routine Progress
           </p>
-          <p className="text-2xl font-mono font-semibold tabular-nums text-teal-800 mt-1">
-            {totals.pm25.toFixed(1)}{" "}
-            <span className="text-xs font-normal text-slate-500">g</span>
+          <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
+            {totals.completedToday} / {routines.length}
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monthly pace: {(totals.pm25 * 30).toFixed(0)} g fine soot prevented
+            Habits completed today
           </p>
         </div>
 
         <div>
           <p className="text-xs font-medium text-slate-500">
-            Household CO2e Reduced
+            Today&apos;s Estimated CO2e Avoided
           </p>
-          <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
-            {totals.co2.toFixed(1)}{" "}
+          <p className="text-2xl font-mono font-semibold tabular-nums text-teal-800 mt-1">
+            {totals.co2Today.toFixed(1)}{" "}
             <span className="text-xs font-normal text-slate-500">kg</span>
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            {totals.count} of {routines.length} routines completed today
+            Based on logged routine emission estimates
           </p>
         </div>
 
         <div>
           <p className="text-xs font-medium text-slate-500">
-            Clean-Air Exposure Gained
+            Weekly Logged Completions
           </p>
           <p className="text-2xl font-mono font-semibold tabular-nums text-emerald-700 mt-1">
-            {totals.cleanHours.toFixed(1)}{" "}
-            <span className="text-xs font-normal text-slate-500">hrs/day</span>
+            {totals.weeklyCompletions}{" "}
+            <span className="text-xs font-normal text-slate-500">actions</span>
           </p>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Low-particulate indoor & corridor breathing time
+          <p className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
+            ~{totals.weeklyCo2.toFixed(1)} kg CO2e cumulative
           </p>
         </div>
       </div>
@@ -141,44 +156,78 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
           onSubmit={handleCreate}
           className="py-5 border-b border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-3 items-end"
         >
-          <div className="md:col-span-4">
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              Habit Title
+          <div className="md:col-span-3">
+            <label
+              htmlFor="new-routine-title"
+              className="block text-xs font-medium text-slate-700 mb-1"
+            >
+              Routine Title
             </label>
             <input
+              id="new-routine-title"
               type="text"
               required
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="e.g., Walk school pickup route"
+              placeholder="e.g., Carpool to school"
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
             />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-slate-700 mb-1">
+            <label
+              htmlFor="new-routine-category"
+              className="block text-xs font-medium text-slate-700 mb-1"
+            >
               Category
             </label>
             <select
+              id="new-routine-category"
               value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value as RoutineCategory)}
+              onChange={(e) =>
+                setNewCategory(e.target.value as RoutineCategory)
+              }
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
             >
               <option value="Mobility">Mobility</option>
               <option value="Heating">Heating</option>
               <option value="Ventilation">Ventilation</option>
+              <option value="Energy">Energy</option>
+              <option value="Waste">Waste</option>
               <option value="Community">Community</option>
             </select>
           </div>
-          <div className="md:col-span-4">
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              Details
+          <div className="md:col-span-3">
+            <label
+              htmlFor="new-routine-desc"
+              className="block text-xs font-medium text-slate-700 mb-1"
+            >
+              Description
             </label>
             <input
+              id="new-routine-desc"
               type="text"
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="Short description of impact"
+              placeholder="What this habit changes"
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label
+              htmlFor="new-routine-co2"
+              className="block text-xs font-medium text-slate-700 mb-1"
+            >
+              Est. CO2e / day (kg)
+            </label>
+            <input
+              id="new-routine-co2"
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={newCo2}
+              onChange={(e) => setNewCo2(Number(e.target.value) || 0)}
+              className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
             />
           </div>
           <div className="md:col-span-2">
@@ -186,13 +235,32 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
               type="submit"
               className="w-full px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors cursor-pointer"
             >
-              Save Habit
+              Save Routine
             </button>
+          </div>
+          <div className="md:col-span-12">
+            <label
+              htmlFor="new-routine-exposure"
+              className="block text-xs font-medium text-slate-700 mb-1"
+            >
+              Exposure / Clean-Air Rationale
+            </label>
+            <input
+              id="new-routine-exposure"
+              type="text"
+              value={newExposureNote}
+              onChange={(e) => setNewExposureNote(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+            />
           </div>
         </form>
       )}
 
-      <div className="py-4 flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit mt-4">
+      <div
+        role="group"
+        aria-label="Filter routines by category"
+        className="py-4 flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit mt-4"
+      >
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
@@ -217,28 +285,27 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
           >
             <button
               type="button"
-              onClick={() => onToggleRoutine(routine.id)}
+              onClick={() => onToggleRoutine(routine)}
               className="flex items-start gap-3.5 text-left cursor-pointer group flex-1 min-w-0"
             >
               <span
                 className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                  routine.completed
+                  routine.completedToday
                     ? "bg-teal-700 border-teal-700 text-white"
                     : "bg-white border-slate-300 group-hover:border-teal-700"
                 }`}
               >
-                {routine.completed && <Check className="w-3.5 h-3.5" />}
+                {routine.completedToday && <Check className="w-3.5 h-3.5" />}
               </span>
               <div className="min-w-0">
-                <p
-                  className={`text-sm font-semibold ${
-                    routine.completed ? "text-slate-900" : "text-slate-800"
-                  }`}
-                >
+                <p className="text-sm font-semibold text-slate-900">
                   {routine.title}
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   {routine.description}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {routine.exposureNote}
                 </p>
               </div>
             </button>
@@ -248,11 +315,11 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
               <span aria-hidden="true" className="text-slate-300">
                 ·
               </span>
-              <span>-{routine.pm25AvoidedGrams.toFixed(1)} g PM2.5</span>
+              <span>{routine.weeklyCompletions}×/wk</span>
               <span aria-hidden="true" className="text-slate-300">
                 ·
               </span>
-              <span>-{routine.co2SavedKg.toFixed(1)} kg CO2e</span>
+              <span>~{routine.co2SavedKg.toFixed(1)} kg CO2e</span>
             </div>
           </div>
         ))}

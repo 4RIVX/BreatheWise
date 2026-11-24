@@ -1,0 +1,344 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated household personalization settings and PII isolated to the owner.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the household owner."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200,
+          "description": "Verified account email, readable only by the owner."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "User display label."
+        },
+        "profileId": {
+          "type": "string",
+          "enum": ["children", "respiratory", "seniors", "commuter", "general"],
+          "description": "Primary household vulnerability profile."
+        },
+        "householdSize": {
+          "type": "integer",
+          "description": "Number of household members (1 to 20)."
+        },
+        "city": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Preferred monitoring city."
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Preferred Indian state or union territory."
+        },
+        "commutePreference": {
+          "type": "string",
+          "enum": ["metro_rail", "bus", "carpool", "two_wheeler", "car", "walk_cycle", "remote"],
+          "description": "Primary daily commute mode."
+        },
+        "outdoorSchedule": {
+          "type": "string",
+          "enum": ["early_morning", "midday", "evening", "flexible"],
+          "description": "Usual outdoor activity window."
+        },
+        "hasHepaPurifier": {
+          "type": "boolean",
+          "description": "Whether indoor HEPA filtration is available."
+        },
+        "purifierCadrM3h": {
+          "type": "number",
+          "description": "Configured air purifier CADR in cubic metres per hour."
+        },
+        "language": {
+          "type": "string",
+          "enum": ["en", "ta"],
+          "description": "Preferred UI language (English or Tamil)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "displayName",
+        "profileId",
+        "householdSize",
+        "city",
+        "state",
+        "commutePreference",
+        "outdoorSchedule",
+        "hasHepaPurifier",
+        "purifierCadrM3h",
+        "language",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserRoutine": {
+      "title": "UserRoutine",
+      "description": "Personalized low-emission daily habit and weekly completion log owned by a user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 300
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Mobility", "Heating", "Ventilation", "Community", "Energy", "Waste"]
+        },
+        "co2SavedKg": {
+          "type": "number"
+        },
+        "exposureNote": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "completedToday": {
+          "type": "boolean"
+        },
+        "weeklyCompletions": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "title",
+        "description",
+        "category",
+        "co2SavedKg",
+        "exposureNote",
+        "completedToday",
+        "weeklyCompletions",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SmogReport": {
+      "title": "SmogReport",
+      "description": "Citizen smog observation without PII. Marked UNVERIFIED until moderated.",
+      "type": "object",
+      "properties": {
+        "authorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "city": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "state": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "approximateLocation": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "sourceCategory": {
+          "type": "string",
+          "enum": [
+            "Traffic emissions",
+            "Industrial emissions",
+            "Waste burning",
+            "Construction dust",
+            "Biomass burning",
+            "Other"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["Mild", "Moderate", "Severe"]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 400
+        },
+        "observedTimeLabel": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "moderationStatus": {
+          "type": "string",
+          "enum": ["UNVERIFIED", "REVIEWED", "FLAGGED"]
+        },
+        "confirmationsCount": {
+          "type": "integer"
+        },
+        "photoDataUrl": {
+          "type": "string",
+          "maxLength": 80000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "authorUid",
+        "city",
+        "state",
+        "approximateLocation",
+        "sourceCategory",
+        "severity",
+        "description",
+        "observedTimeLabel",
+        "moderationStatus",
+        "confirmationsCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SmogConfirmation": {
+      "title": "SmogConfirmation",
+      "description": "Single-user confirmation record preventing duplicate confirmations per smog report.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "reportId", "createdAt"]
+    },
+    "EcoTripLog": {
+      "title": "EcoTripLog",
+      "description": "Saved commuting mode comparison record using versioned India emission factors.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "distanceKm": {
+          "type": "number"
+        },
+        "originalMode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "alternativeMode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "journeys": {
+          "type": "integer"
+        },
+        "co2AvoidedKg": {
+          "type": "number"
+        },
+        "factorVersion": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "distanceKm",
+        "originalMode",
+        "alternativeMode",
+        "journeys",
+        "co2AvoidedKg",
+        "factorVersion",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private household profile and preferences owned by userId."
+    },
+    "/users/{userId}/routines/{routineId}": {
+      "schema": { "$ref": "#/entities/UserRoutine" },
+      "description": "Low-emission habits owned by userId."
+    },
+    "/users/{userId}/ecoLogs/{logId}": {
+      "schema": { "$ref": "#/entities/EcoTripLog" },
+      "description": "Saved commute impact calculations owned by userId."
+    },
+    "/smogReports/{reportId}": {
+      "schema": { "$ref": "#/entities/SmogReport" },
+      "description": "Publicly viewable citizen smog observations without PII; requires verified auth to create."
+    },
+    "/smogReports/{reportId}/confirmations/{uid}": {
+      "schema": { "$ref": "#/entities/SmogConfirmation" },
+      "description": "Unique confirmation document per user per report."
+    }
+  }
+}

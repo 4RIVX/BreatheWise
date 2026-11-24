@@ -1,125 +1,310 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Header, type SectionId } from "./components/Header";
-import { DispersionChart } from "./components/DispersionChart";
-import { GeminiGuidancePanel } from "./components/GeminiGuidancePanel";
-import { SmogReportsSection } from "./components/SmogReportsSection";
-import { IndoorAirPlanner } from "./components/IndoorAirPlanner";
-import { LowEmissionRoutines } from "./components/LowEmissionRoutines";
-import { ReportSmogModal } from "./components/ReportSmogModal";
+import { WorkspaceToolbar } from "./components/WorkspaceToolbar";
 import {
-  HOUSEHOLD_PROFILES,
-  INITIAL_REPORTS,
-  INITIAL_ROUTINES,
-  INITIAL_STATIONS,
-} from "./data/seedData";
+  AirQualityDashboard,
+  type ActiveLocationState,
+  type MeasuredBlock,
+  type ModelledBlock,
+} from "./components/AirQualityDashboard";
+import { DispersionChart } from "./components/DispersionChart";
+import { DailyProtectionPlanner } from "./components/DailyProtectionPlanner";
+import {
+  AiFamilyGuardian,
+  type AiProviderKind,
+  type AskQuestionResult,
+} from "./components/AiFamilyGuardian";
+import { IndoorAirCoach } from "./components/IndoorAirCoach";
+import { EcoMobilityTracker } from "./components/EcoMobilityTracker";
+import { LowEmissionRoutines } from "./components/LowEmissionRoutines";
+import { CommunitySmogWatch } from "./components/CommunitySmogWatch";
+import { ReportSmogModal } from "./components/ReportSmogModal";
+import { TRANSLATIONS, type UiLanguage } from "./domain/i18n";
+import { INDIAN_CITY_PRESETS } from "./domain/indianCities";
+import { DEFAULT_CLEAN_AIR_ROUTINES } from "./domain/defaultRoutines";
 import type {
-  AqiStatusLabel,
-  HouseholdProfileId,
-  LowEmissionRoutine,
-  PersonalizedGuidance,
-  ReportSeverity,
-  SmogReport,
-  SmogSourceType,
-  StationReading,
-} from "./types/breathewise";
+  HouseholdContext,
+  SmogSourceCategory,
+  StructuredGuidance,
+  VerifiedAirContext,
+} from "./domain/schemas";
+import { useFirebase } from "./firebase/FirebaseProvider";
+import {
+  confirmSmogReportAtomic,
+  createSmogReport,
+  createUserRoutine,
+  ensureUserProfile,
+  saveEcoTripLog,
+  saveUserPreferences,
+  subscribeToEcoLogs,
+  subscribeToSmogReports,
+  subscribeToUserRoutines,
+  toggleUserRoutineCompletion,
+  type FirestoreEcoTripLog,
+  type FirestoreRoutineItem,
+  type FirestoreSmogReport,
+} from "./firebase/firestoreService";
 
-const ROUTINES_STORAGE_KEY = "breathewise_routines_v1";
+const LOCAL_ROUTINES_KEY = "breathewise_routines_v2";
+const LOCAL_HOUSEHOLD_KEY = "breathewise_household_v2";
 
-function getStatusTone(status: AqiStatusLabel): string {
-  switch (status) {
-    case "Good":
-      return "text-emerald-700";
-    case "Moderate":
-      return "text-teal-700";
-    case "Sensitive Groups":
-      return "text-amber-700";
-    case "Unhealthy":
-      return "text-rose-700";
-  }
-}
+const DEFAULT_HOUSEHOLD: HouseholdContext = {
+  profileId: "children",
+  householdSize: 4,
+  commutePreference: "metro_rail",
+  outdoorSchedule: "midday",
+  hasHepaPurifier: true,
+  purifierCadrM3h: 300,
+  language: "en",
+};
 
 export function App() {
-  const [activeSection, setActiveSection] = useState<SectionId>("overview");
-  const [stations, setStations] = useState<StationReading[]>(INITIAL_STATIONS);
-  const [selectedStationId, setSelectedStationId] = useState<string>(
-    INITIAL_STATIONS[0].id
-  );
-  const [profileId, setProfileId] = useState<HouseholdProfileId>("children");
+  const { user, authReady, firebaseEnabled, getIdToken, signInWithGoogle } =
+    useFirebase();
 
-  const [reports, setReports] = useState<SmogReport[]>(INITIAL_REPORTS);
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-
-  const [roomSqM, setRoomSqM] = useState<number>(32);
-  const [hasHepa, setHasHepa] = useState<boolean>(true);
-
-  const [routines, setRoutines] = useState<LowEmissionRoutine[]>(() => {
-    try {
-      const saved = localStorage.getItem(ROUTINES_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as LowEmissionRoutine[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // Ignore storage errors
-    }
-    return INITIAL_ROUTINES;
+  const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
+  const [activeLocation, setActiveLocation] = useState<ActiveLocationState>({
+    city: INDIAN_CITY_PRESETS[0].city,
+    state: INDIAN_CITY_PRESETS[0].state,
+    latitude: INDIAN_CITY_PRESETS[0].latitude,
+    longitude: INDIAN_CITY_PRESETS[0].longitude,
+    source: "preset",
   });
 
-  const [guidance, setGuidance] = useState<PersonalizedGuidance | null>(null);
-  const [guidanceLoading, setGuidanceLoading] = useState<boolean>(false);
+  const [household, setHousehold] = useState<HouseholdContext>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_HOUSEHOLD_KEY);
+      if (saved) return { ...DEFAULT_HOUSEHOLD, ...JSON.parse(saved) };
+    } catch {
+      // Ignore storage error
+    }
+    return DEFAULT_HOUSEHOLD;
+  });
+
+  const [measured, setMeasured] = useState<MeasuredBlock | null>(null);
+  const [modelled, setModelled] = useState<ModelledBlock | null>(null);
+  const [selectedCpcbIndex, setSelectedCpcbIndex] = useState(0);
+  const [airLoading, setAirLoading] = useState(false);
+  const [airError, setAirError] = useState<string | null>(null);
+  const [geoPending, setGeoPending] = useState(false);
+
+  const [guidance, setGuidance] = useState<StructuredGuidance | null>(null);
+  const [guidanceProvider, setGuidanceProvider] =
+    useState<AiProviderKind | null>(null);
+  const [guidanceModel, setGuidanceModel] = useState<string | null>(null);
+  const [guidanceFallbackReason, setGuidanceFallbackReason] = useState<
+    string | null
+  >(null);
+  const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [guidanceError, setGuidanceError] = useState<string | null>(null);
+
+  const [localRoutines, setLocalRoutines] = useState<FirestoreRoutineItem[]>(
+    () => {
+      try {
+        const saved = localStorage.getItem(LOCAL_ROUTINES_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved) as FirestoreRoutineItem[];
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {
+        // Ignore storage error
+      }
+      return DEFAULT_CLEAN_AIR_ROUTINES;
+    }
+  );
+  const [cloudRoutines, setCloudRoutines] = useState<
+    FirestoreRoutineItem[] | null
+  >(null);
+  const [ecoLogs, setEcoLogs] = useState<FirestoreEcoTripLog[]>([]);
+  const [smogReports, setSmogReports] = useState<FirestoreSmogReport[]>([]);
+  const [confirmedReportIds, setConfirmedReportIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  const t = TRANSLATIONS[household.language];
 
   useEffect(() => {
     try {
-      localStorage.setItem(ROUTINES_STORAGE_KEY, JSON.stringify(routines));
+      localStorage.setItem(LOCAL_HOUSEHOLD_KEY, JSON.stringify(household));
     } catch {
       // Ignore storage errors
     }
-  }, [routines]);
+  }, [household]);
 
   useEffect(() => {
-    let active = true;
-    async function loadInitialData() {
+    if (!user) {
       try {
-        const [stRes, repRes] = await Promise.all([
-          fetch("/api/stations"),
-          fetch("/api/reports"),
-        ]);
-        if (stRes.ok) {
-          const stData = (await stRes.json()) as { stations?: StationReading[] };
-          if (active && stData.stations?.length) {
-            setStations(stData.stations);
-          }
-        }
-        if (repRes.ok) {
-          const repData = (await repRes.json()) as { reports?: SmogReport[] };
-          if (active && repData.reports?.length) {
-            setReports(repData.reports);
-          }
-        }
+        localStorage.setItem(LOCAL_ROUTINES_KEY, JSON.stringify(localRoutines));
       } catch {
-        // Keep seeded state if server is warming up
+        // Ignore storage errors
       }
     }
-    loadInitialData();
+  }, [localRoutines, user]);
+
+  // Subscribe to Community Smog Watch (publicly readable without PII)
+  useEffect(() => {
+    if (!firebaseEnabled) return;
+    const unsub = subscribeToSmogReports(
+      (items) => setSmogReports(items),
+      () => {
+        // Firestore error logged by handleFirestoreError
+      }
+    );
+    return () => unsub();
+  }, [firebaseEnabled]);
+
+  // Sync user profile, routines, and eco logs when signed in
+  useEffect(() => {
+    if (!firebaseEnabled || !authReady || !user) {
+      return;
+    }
+
+    let cancelled = false;
+    let unsubRoutines = () => {};
+    let unsubEcoLogs = () => {};
+
+    ensureUserProfile(user, {
+      city: activeLocation.city,
+      state: activeLocation.state,
+      household,
+    })
+      .then((profile) => {
+        if (cancelled) return;
+        setHousehold({
+          profileId: profile.profileId,
+          householdSize: profile.householdSize,
+          commutePreference: profile.commutePreference,
+          outdoorSchedule: profile.outdoorSchedule,
+          hasHepaPurifier: profile.hasHepaPurifier,
+          purifierCadrM3h: profile.purifierCadrM3h,
+          language: profile.language,
+        });
+
+        unsubRoutines = subscribeToUserRoutines(
+          user.uid,
+          async (rows) => {
+            if (rows.length === 0) {
+              // Seed user's initial clean-air routines once
+              for (const tmpl of DEFAULT_CLEAN_AIR_ROUTINES) {
+                await createUserRoutine(user.uid, {
+                  title: tmpl.title,
+                  description: tmpl.description,
+                  category: tmpl.category,
+                  co2SavedKg: tmpl.co2SavedKg,
+                  exposureNote: tmpl.exposureNote,
+                  completedToday: false,
+                  weeklyCompletions: 0,
+                });
+              }
+            } else {
+              setCloudRoutines(rows);
+            }
+          },
+          () => {}
+        );
+
+        unsubEcoLogs = subscribeToEcoLogs(
+          user.uid,
+          (logs) => setEcoLogs(logs),
+          () => {}
+        );
+      })
+      .catch(() => {});
+
     return () => {
-      active = false;
+      cancelled = true;
+      unsubRoutines();
+      unsubEcoLogs();
     };
+  }, [firebaseEnabled, authReady, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchAirQuality = useCallback(async (loc: ActiveLocationState) => {
+    setAirLoading(true);
+    setAirError(null);
+    setSelectedCpcbIndex(0);
+    try {
+      const qs = new URLSearchParams({
+        city: loc.city,
+        state: loc.state,
+        latitude: String(loc.latitude),
+        longitude: String(loc.longitude),
+      });
+      const res = await fetch(`/api/air-quality?${qs.toString()}`);
+      const data = (await res.json()) as {
+        measured?: MeasuredBlock;
+        modelled?: ModelledBlock;
+        error?: string;
+      };
+      if (data.measured) setMeasured(data.measured);
+      if (data.modelled) setModelled(data.modelled);
+      if (!res.ok && data.error) {
+        setAirError(data.error);
+      }
+    } catch (err) {
+      setAirError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load air-quality providers."
+      );
+    } finally {
+      setAirLoading(false);
+    }
   }, []);
 
-  const currentStation = useMemo(
-    () => stations.find((s) => s.id === selectedStationId) ?? stations[0],
-    [stations, selectedStationId]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) {
+        void fetchAirQuality(activeLocation);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLocation, fetchAirQuality]);
 
-  const currentProfile = useMemo(
-    () =>
-      HOUSEHOLD_PROFILES.find((p) => p.id === profileId) ??
-      HOUSEHOLD_PROFILES[0],
-    [profileId]
-  );
+  const activeCpcbStation = useMemo(() => {
+    if (measured?.status !== "available" || measured.stations.length === 0) {
+      return null;
+    }
+    return measured.stations[selectedCpcbIndex] ?? measured.stations[0];
+  }, [measured, selectedCpcbIndex]);
 
-  const fetchGuidance = useCallback(async () => {
+  const verifiedAirContext: VerifiedAirContext = useMemo(() => {
+    return {
+      locationLabel: `${activeLocation.city}, ${activeLocation.state}`,
+      state: activeLocation.state,
+      measuredStationName: activeCpcbStation?.stationName ?? null,
+      measuredAqi: activeCpcbStation?.indianAqi.aqi ?? null,
+      measuredAqiCategory: activeCpcbStation?.indianAqi.category ?? null,
+      measuredTimestamp:
+        activeCpcbStation?.lastUpdatedIso ??
+        activeCpcbStation?.lastUpdatedRaw ??
+        null,
+      measuredSourceAvailable: measured?.status === "available",
+      modelledPm25: modelled?.currentPollutants.pm25 ?? null,
+      modelledPm10: modelled?.currentPollutants.pm10 ?? null,
+      modelledNo2: modelled?.currentPollutants.no2 ?? null,
+      modelledSo2: modelled?.currentPollutants.so2 ?? null,
+      modelledOzone: modelled?.currentPollutants.ozone ?? null,
+      modelledCoUgm3: modelled?.currentPollutants.coUgm3 ?? null,
+      modelledAqiEstimate: modelled?.indianAqiFromRollingModel.aqi ?? null,
+      modelledTimestamp: modelled?.currentTimeIso ?? null,
+      temperatureC: modelled?.weather.temperatureC ?? null,
+      humidityPct: modelled?.weather.humidityPct ?? null,
+      windKmh: modelled?.weather.windKmh ?? null,
+      boundaryLayerHeightM: modelled?.weather.boundaryLayerHeightM ?? null,
+      bestForecastWindow: modelled?.bestLowerPmWindow ?? null,
+      dataLimitations:
+        measured?.status !== "available"
+          ? "Official CPCB station telemetry unavailable; assessment relies on Open-Meteo regional atmospheric forecast."
+          : "CPCB readings reflect stationary monitors; Open-Meteo values represent regional grid averages.",
+    };
+  }, [activeLocation, activeCpcbStation, measured, modelled]);
+
+  const handleRefreshGuidance = useCallback(async () => {
     setGuidanceLoading(true);
     setGuidanceError(null);
     try {
@@ -127,36 +312,234 @@ export function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stationId: selectedStationId,
-          profileId,
-          roomSqM,
-          hasHepa,
+          airContext: verifiedAirContext,
+          household,
         }),
       });
       const data = (await res.json()) as {
-        guidance?: PersonalizedGuidance;
+        guidance?: StructuredGuidance;
+        provider?: AiProviderKind;
+        model?: string;
+        fallbackUsed?: boolean;
+        fallbackReason?: string | null;
         error?: string;
       };
       if (!res.ok || !data.guidance) {
         throw new Error(
-          data.error || "Unable to generate personalized guidance right now."
+          data.error || "Unable to generate AI Family Guardian guidance."
         );
       }
       setGuidance(data.guidance);
+      setGuidanceProvider(data.provider ?? "gemini");
+      setGuidanceModel(data.model ?? null);
+      setGuidanceFallbackReason(
+        data.fallbackUsed
+          ? (data.fallbackReason ?? "Fallback provider used.")
+          : null
+      );
     } catch (err) {
       setGuidanceError(
         err instanceof Error
           ? err.message
-          : "Failed to load Gemini guidance."
+          : "Failed to load AI Family Guardian guidance."
       );
     } finally {
       setGuidanceLoading(false);
     }
-  }, [selectedStationId, profileId, roomSqM, hasHepa]);
+  }, [verifiedAirContext, household]);
 
-  useEffect(() => {
-    fetchGuidance();
-  }, [selectedStationId, profileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const activeRoutines = user && cloudRoutines ? cloudRoutines : localRoutines;
+
+  const handleAskQuestion = useCallback(
+    async (question: string): Promise<AskQuestionResult> => {
+      const completedTitles = activeRoutines
+        .filter((r) => r.completedToday)
+        .map((r) => r.title);
+
+      const res = await fetch("/api/gemini/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          airContext: verifiedAirContext,
+          household,
+          completedRoutines: completedTitles,
+        }),
+      });
+      const data = (await res.json()) as {
+        answer?: string;
+        provider?: AiProviderKind;
+        model?: string;
+        fallbackUsed?: boolean;
+        fallbackReason?: string | null;
+        error?: string;
+      };
+      if (!res.ok || !data.answer) {
+        throw new Error(
+          data.error || "Unable to get an answer from AI Family Guardian."
+        );
+      }
+      return {
+        answer: data.answer,
+        provider: data.provider,
+        model: data.model,
+        fallbackUsed: data.fallbackUsed,
+        fallbackReason: data.fallbackReason,
+      };
+    },
+    [activeRoutines, verifiedAirContext, household]
+  );
+
+  const handleHouseholdChange = useCallback(
+    async (next: HouseholdContext) => {
+      setHousehold(next);
+      if (user) {
+        setSavingProfile(true);
+        try {
+          await saveUserPreferences(user.uid, {
+            city: activeLocation.city,
+            state: activeLocation.state,
+            household: next,
+          });
+        } catch {
+          // Logged by handleFirestoreError
+        } finally {
+          setSavingProfile(false);
+        }
+      }
+    },
+    [user, activeLocation]
+  );
+
+  const handleLanguageChange = useCallback(
+    (lang: UiLanguage) => {
+      handleHouseholdChange({ ...household, language: lang });
+    },
+    [household, handleHouseholdChange]
+  );
+
+  const handleRequestBrowserLocation = () => {
+    if (!navigator.geolocation) {
+      setAirError("Browser geolocation is not supported in this environment.");
+      return;
+    }
+    setGeoPending(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeoPending(false);
+        setActiveLocation({
+          city: "Current Location",
+          state: activeLocation.state,
+          latitude: Number(pos.coords.latitude.toFixed(4)),
+          longitude: Number(pos.coords.longitude.toFixed(4)),
+          source: "geolocation",
+        });
+      },
+      (err) => {
+        setGeoPending(false);
+        setAirError(
+          `Location permission was not granted (${err.message}). Select a city manually instead.`
+        );
+      },
+      { enableHighAccuracy: false, timeout: 8000 }
+    );
+  };
+
+  const handleToggleRoutine = async (routine: FirestoreRoutineItem) => {
+    const nextCompleted = !routine.completedToday;
+    const nextWeekly = Math.max(
+      0,
+      routine.weeklyCompletions + (nextCompleted ? 1 : -1)
+    );
+
+    if (user) {
+      await toggleUserRoutineCompletion(
+        user.uid,
+        routine.id,
+        nextCompleted,
+        nextWeekly
+      );
+    } else {
+      setLocalRoutines((prev) =>
+        prev.map((r) =>
+          r.id === routine.id
+            ? {
+                ...r,
+                completedToday: nextCompleted,
+                weeklyCompletions: nextWeekly,
+              }
+            : r
+        )
+      );
+    }
+  };
+
+  const handleAddRoutine = async (
+    routine: Omit<FirestoreRoutineItem, "id" | "uid">
+  ) => {
+    if (user) {
+      await createUserRoutine(user.uid, routine);
+    } else {
+      setLocalRoutines((prev) => [
+        {
+          ...routine,
+          id: `rt-${Date.now()}`,
+          uid: "local",
+        },
+        ...prev,
+      ]);
+    }
+  };
+
+  const handleCreateSmogReport = async (payload: {
+    city: string;
+    state: string;
+    approximateLocation: string;
+    sourceCategory: SmogSourceCategory;
+    severity: "Mild" | "Moderate" | "Severe";
+    description: string;
+    observedTimeLabel: string;
+    photoDataUrl?: string;
+  }) => {
+    if (!user) {
+      throw new Error("Please sign in with Google to submit a smog report.");
+    }
+    await createSmogReport(user.uid, payload);
+  };
+
+  const handleConfirmSmogReport = async (report: FirestoreSmogReport) => {
+    if (!user) {
+      throw new Error("Sign in with Google to confirm community reports.");
+    }
+    try {
+      await confirmSmogReportAtomic(
+        user.uid,
+        report.id,
+        report.confirmationsCount
+      );
+      setConfirmedReportIds((prev) => new Set(prev).add(report.id));
+    } catch (err) {
+      if (err instanceof Error && err.message === "DUPLICATE_CONFIRMATION") {
+        setConfirmedReportIds((prev) => new Set(prev).add(report.id));
+        throw new Error("You have already confirmed this sighting.", {
+          cause: err,
+        });
+      }
+      throw err;
+    }
+  };
+
+  const handleSaveTripLog = async (log: {
+    distanceKm: number;
+    originalMode: string;
+    alternativeMode: string;
+    journeys: number;
+    co2AvoidedKg: number;
+    factorVersion: string;
+  }) => {
+    if (!user) return;
+    await saveEcoTripLog(user.uid, log);
+  };
 
   const handleNavigate = (section: SectionId) => {
     setActiveSection(section);
@@ -166,68 +549,14 @@ export function App() {
     }
   };
 
-  const handleCreateReport = async (payload: {
-    neighborhood: string;
-    districtId: string;
-    sourceType: SmogSourceType;
-    severity: ReportSeverity;
-    notes: string;
-    reporterLabel: string;
-  }) => {
-    const res = await fetch("/api/reports", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = (await res.json()) as { report?: SmogReport; error?: string };
-    if (!res.ok || !data.report) {
-      throw new Error(data.error || "Could not submit smog report.");
-    }
-    setReports((prev) => [data.report!, ...prev]);
-  };
-
-  const handleConfirmReport = async (reportId: string) => {
-    try {
-      const res = await fetch(`/api/reports/${reportId}/confirm`, {
-        method: "POST",
-      });
-      const data = (await res.json()) as { report?: SmogReport };
-      if (res.ok && data.report) {
-        setReports((prev) =>
-          prev.map((r) => (r.id === reportId ? data.report! : r))
-        );
-      }
-    } catch {
-      // Optimistic fallback if transient network issue
-      setReports((prev) =>
-        prev.map((r) =>
-          r.id === reportId ? { ...r, verifiedCount: r.verifiedCount + 1 } : r
-        )
-      );
-    }
-  };
-
-  const handleToggleRoutine = (id: string) => {
-    setRoutines((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, completed: !r.completed } : r))
-    );
-  };
-
-  const handleAddRoutine = (
-    routine: Omit<LowEmissionRoutine, "id" | "completed">
-  ) => {
-    const newItem: LowEmissionRoutine = {
-      ...routine,
-      id: `rt-${Date.now()}`,
-      completed: true,
-    };
-    setRoutines((prev) => [newItem, ...prev]);
-  };
-
-  const completedRoutineTitles = useMemo(
-    () => routines.filter((r) => r.completed).map((r) => r.title),
-    [routines]
-  );
+  const activeAqi =
+    activeCpcbStation?.indianAqi.aqi ??
+    modelled?.indianAqiFromRollingModel.aqi ??
+    null;
+  const activeCategory =
+    activeCpcbStation?.indianAqi.category ??
+    modelled?.indianAqiFromRollingModel.category ??
+    null;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
@@ -235,202 +564,108 @@ export function App() {
         activeSection={activeSection}
         onNavigate={handleNavigate}
         onOpenReportModal={() => setReportModalOpen(true)}
+        t={t}
       />
 
-      <main className="flex-1 max-w-[1280px] w-full mx-auto px-6 py-8 space-y-8">
-        <section id="overview" className="space-y-6">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-            <div className="max-w-2xl">
-              <p className="text-xs font-medium text-teal-800 tracking-wide">
-                Winter Smog & Air Pollution Assistant
-              </p>
-              <h1
-                className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 mt-1"
-                style={{ textWrap: "balance" }}
-              >
-                Report. Understand. Breathe Better.
-              </h1>
-              <p className="text-sm sm:text-base text-slate-600 mt-2 leading-relaxed">
-                Navigate winter thermal inversions and urban particulate spikes with personalized Gemini guidance, room-level filtration sizing, and low-emission household routines.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 shrink-0">
-              <span className="text-xs font-medium text-slate-500">
-                Active Monitoring Corridor
-              </span>
-              <div
-                role="group"
-                aria-label="Select monitoring district"
-                className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/70 rounded-lg"
-              >
-                {stations.map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => setSelectedStationId(st.id)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      st.id === currentStation.id
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {st.district}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <p className="text-xs font-medium text-slate-500">
-                  Household Risk Profile
-                </p>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  {currentProfile.summary}
-                </p>
-              </div>
-              <div
-                role="group"
-                aria-label="Select household profile"
-                className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg"
-              >
-                {HOUSEHOLD_PROFILES.map((prof) => (
-                  <button
-                    key={prof.id}
-                    type="button"
-                    onClick={() => setProfileId(prof.id)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      prof.id === profileId
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {prof.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
-              <div>
-                <p className="text-xs text-slate-500">Air Quality Index</p>
-                <p className="text-3xl font-mono font-bold tabular-nums text-slate-900 mt-1">
-                  {currentStation.aqi}
-                </p>
-                <p
-                  className={`text-xs font-medium mt-1 ${getStatusTone(
-                    currentStation.statusLabel
-                  )}`}
-                >
-                  {currentStation.statusLabel} · {currentStation.updatedAt}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-500">Fine Particulate (PM2.5)</p>
-                <p className="text-3xl font-mono font-bold tabular-nums text-slate-900 mt-1">
-                  {currentStation.pm25.toFixed(1)}{" "}
-                  <span className="text-xs font-normal text-slate-500">
-                    µg/m³
-                  </span>
-                </p>
-                <p className="text-xs text-slate-500 mt-1 font-mono tabular-nums">
-                  {(currentStation.pm25 / 15).toFixed(1)}x WHO 24h limit
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-500">Coarse Dust (PM10)</p>
-                <p className="text-3xl font-mono font-bold tabular-nums text-slate-900 mt-1">
-                  {currentStation.pm10.toFixed(1)}{" "}
-                  <span className="text-xs font-normal text-slate-500">
-                    µg/m³
-                  </span>
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Road & winter grit suspension
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-500">Nitrogen Dioxide (NO2)</p>
-                <p className="text-3xl font-mono font-bold tabular-nums text-slate-900 mt-1">
-                  {currentStation.no2}{" "}
-                  <span className="text-xs font-normal text-slate-500">
-                    ppb
-                  </span>
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Combustion & idling tracer
-                </p>
-              </div>
-
-              <div className="col-span-2 sm:col-span-1">
-                <p className="text-xs text-slate-500">Inversion & Boundary Wind</p>
-                <p className="text-3xl font-mono font-bold tabular-nums text-slate-900 mt-1">
-                  {currentStation.windKmh}{" "}
-                  <span className="text-xs font-normal text-slate-500">
-                    km/h
-                  </span>
-                </p>
-                <p className="text-xs text-slate-600 mt-1 font-mono tabular-nums">
-                  {currentStation.inversionActive
-                    ? `Trap ceiling ${currentStation.inversionCeilingM} m · ${currentStation.tempC}°C`
-                    : `Clear column · ${currentStation.tempC}°C`}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <DispersionChart
-            series={currentStation.hourlySeries}
-            districtName={currentStation.district}
-            inversionActive={currentStation.inversionActive}
-          />
-
-          <GeminiGuidancePanel
-            station={currentStation}
-            profileId={profileId}
-            profileLabel={currentProfile.label}
-            guidance={guidance}
-            guidanceLoading={guidanceLoading}
-            guidanceError={guidanceError}
-            onRefreshGuidance={fetchGuidance}
-            completedRoutines={completedRoutineTitles}
-          />
-        </section>
-
-        <SmogReportsSection
-          reports={reports}
-          stations={stations}
-          selectedStationId={selectedStationId}
-          onConfirmReport={handleConfirmReport}
-          onOpenReportModal={() => setReportModalOpen(true)}
+      <main className="flex-1 max-w-[1280px] w-full mx-auto px-6 py-6 space-y-8">
+        <WorkspaceToolbar
+          language={household.language}
+          onChangeLanguage={handleLanguageChange}
+          locationLabel={`${activeLocation.city}, ${activeLocation.state}`}
+          onRequestBrowserLocation={handleRequestBrowserLocation}
+          locationRequestPending={geoPending}
+          onRefreshAirQuality={() => fetchAirQuality(activeLocation)}
+          airLoading={airLoading}
+          t={t}
         />
 
-        <IndoorAirPlanner
-          station={currentStation}
-          roomSqM={roomSqM}
-          onChangeRoomSqM={setRoomSqM}
-          hasHepa={hasHepa}
-          onToggleHepa={setHasHepa}
+        <AirQualityDashboard
+          activeLocation={activeLocation}
+          onSelectLocation={setActiveLocation}
+          measured={measured}
+          modelled={modelled}
+          selectedCpcbIndex={selectedCpcbIndex}
+          onSelectCpcbIndex={setSelectedCpcbIndex}
+          loading={airLoading}
+          error={airError}
+          t={t}
+        />
+
+        <DispersionChart
+          series={modelled?.hourlySeries ?? []}
+          locationLabel={`${activeLocation.city}, ${activeLocation.state}`}
+        />
+
+        <DailyProtectionPlanner
+          household={household}
+          onChangeHousehold={handleHouseholdChange}
+          aqi={activeAqi}
+          category={activeCategory}
+          pm25={modelled?.currentPollutants.pm25 ?? null}
+          windKmh={modelled?.weather.windKmh ?? null}
+          bestWindowLabel={modelled?.bestLowerPmWindow ?? null}
+          savingProfile={savingProfile}
+          isSignedIn={Boolean(user)}
+          t={t}
+        />
+
+        <AiFamilyGuardian
+          locationLabel={`${activeLocation.city}, ${activeLocation.state}`}
+          household={household}
+          guidance={guidance}
+          guidanceProvider={guidanceProvider}
+          guidanceModel={guidanceModel}
+          guidanceFallbackReason={guidanceFallbackReason}
+          guidanceLoading={guidanceLoading}
+          guidanceError={guidanceError}
+          onRefreshGuidance={handleRefreshGuidance}
+          onAskQuestion={handleAskQuestion}
+          t={t}
+        />
+
+        <IndoorAirCoach
+          locationLabel={`${activeLocation.city}, ${activeLocation.state}`}
+          purifierCadrM3h={household.purifierCadrM3h}
+          onChangePurifierCadrM3h={(val) =>
+            handleHouseholdChange({ ...household, purifierCadrM3h: val })
+          }
+          t={t}
+        />
+
+        <EcoMobilityTracker
+          isSignedIn={Boolean(user)}
+          savedLogs={user ? ecoLogs : []}
+          onSaveTripLog={handleSaveTripLog}
+          t={t}
         />
 
         <LowEmissionRoutines
-          routines={routines}
+          routines={activeRoutines}
           onToggleRoutine={handleToggleRoutine}
           onAddRoutine={handleAddRoutine}
+          isSignedIn={Boolean(user)}
+          t={t}
+        />
+
+        <CommunitySmogWatch
+          reports={smogReports}
+          activeCity={activeLocation.city}
+          isSignedIn={Boolean(user)}
+          confirmedIds={confirmedReportIds}
+          onConfirmReport={handleConfirmSmogReport}
+          onOpenReportModal={() => setReportModalOpen(true)}
+          t={t}
         />
       </main>
 
       <footer className="border-t border-slate-200 bg-white mt-12">
         <div className="max-w-[1280px] mx-auto px-6 py-5 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
-          <span>BreatheWise · Report. Understand. Breathe Better.</span>
           <span>
-            Winter Smog Guidance · Community Observations · Low-Emission Household Routines
+            {t.brand} · {t.tagline}
+          </span>
+          <span>
+            CPCB Indian National AQI · Open-Meteo Regional Model · Community
+            Smog Watch
           </span>
         </div>
       </footer>
@@ -438,10 +673,13 @@ export function App() {
       {reportModalOpen && (
         <ReportSmogModal
           open={reportModalOpen}
-          stations={stations}
-          defaultDistrictId={selectedStationId}
+          defaultCity={activeLocation.city}
+          defaultState={activeLocation.state}
+          isSignedIn={Boolean(user)}
+          onSignIn={signInWithGoogle}
+          getIdToken={getIdToken}
           onClose={() => setReportModalOpen(false)}
-          onSubmit={handleCreateReport}
+          onSubmit={handleCreateSmogReport}
         />
       )}
     </div>
