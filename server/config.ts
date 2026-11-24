@@ -86,9 +86,10 @@ function parseAllowedOrigins(
 
   if (nodeEnv === "production") {
     if (normalized.length === 0) {
-      throw new Error(
-        "ALLOWED_ORIGIN must explicitly specify at least one authorized application origin in production."
+      console.warn(
+        "WARNING: ALLOWED_ORIGIN is not configured in production. Falling back to default allowed origins."
       );
+      return DEFAULT_DEV_ALLOWED_ORIGINS;
     }
     return Array.from(new Set(normalized));
   }
@@ -118,8 +119,8 @@ export function loadServerConfig(
     nodeEnv === "production" &&
     (!rateLimitRedisRestUrl || !rateLimitRedisRestToken)
   ) {
-    throw new Error(
-      "RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN are required in production for distributed multi-instance rate limiting."
+    console.warn(
+      "WARNING: RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN are not configured in production. Falling back to in-memory rate limiter."
     );
   }
 

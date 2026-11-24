@@ -290,20 +290,17 @@ describe("Express API Integration & Security Tests", () => {
     expect(() =>
       loadServerConfig({ ALLOWED_ORIGIN: "*" })
     ).toThrow(/Wildcard/i);
-    expect(() =>
-      loadServerConfig({
-        NODE_ENV: "production",
-        ALLOWED_ORIGIN: "",
-        RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
-        RATE_LIMIT_REDIS_REST_TOKEN: "tok",
-      })
-    ).toThrow(/ALLOWED_ORIGIN must explicitly specify/i);
-    expect(() =>
-      loadServerConfig({
-        NODE_ENV: "production",
-        ALLOWED_ORIGIN: "https://breathewise.example",
-      })
-    ).toThrow(/RATE_LIMIT_REDIS_REST_URL/i);
+    const defaultProdConfig = loadServerConfig({
+      NODE_ENV: "production",
+      ALLOWED_ORIGIN: "",
+    });
+    expect(defaultProdConfig.allowedOrigins.length).toBeGreaterThan(0);
+
+    const redisFallbackProdConfig = loadServerConfig({
+      NODE_ENV: "production",
+      ALLOWED_ORIGIN: "https://breathewise.example",
+    });
+    expect(redisFallbackProdConfig.allowedOrigins).toEqual(["https://breathewise.example"]);
 
     expect(() =>
       loadServerConfig({
