@@ -84,7 +84,7 @@ export function buildDailyProtectionPlan(params: {
           : "Limit window opening during calm mornings and evenings; rely on indoor exhaust fans during cooking."
         : windKmh !== null && windKmh >= 10
           ? "Boundary wind supports short cross-ventilation flushes to refresh indoor CO2."
-          : "Open windows briefly during midday hours when outdoor particulate readings are lowest.";
+          : "Open windows only when current verified air-quality and local visibility readings show clean outdoor air.";
 
   const steps: DailyProtectionStep[] = [
     {
@@ -118,13 +118,16 @@ export function buildDailyProtectionPlan(params: {
       priority: maskRecommended ? "Essential" : "Recommended",
     },
     {
-      id: "midday-vent",
-      timeWindow: bestWindowLabel ?? "12:30 – 15:30",
+      id: "ventilation-window",
+      timeWindow: bestWindowLabel
+        ? `${bestWindowLabel} (Forecast Low PM2.5)`
+        : "Verify Local Air",
       title: bestWindowLabel
-        ? `Ventilate briefly around ${bestWindowLabel} when forecast PM2.5 is lowest`
+        ? `Consider brief cross-ventilation around ${bestWindowLabel} if local O3/NO2 and visible haze are also low`
         : ventilationWindowNote,
-      rationale:
-        "Ventilating during the forecast minimum PM2.5 window refreshes indoor air while minimizing outdoor particulate ingress.",
+      rationale: bestWindowLabel
+        ? "This window marks Open-Meteo's modelled regional minimum for PM2.5 rather than guaranteed clean air—afternoon ozone (O3) or roadside NO2 can still peak independently, and model forecasts carry local grid uncertainty."
+        : "Rely on verified ground station readings and visual smoke checks before opening exterior windows.",
       priority: "Recommended",
     },
     {

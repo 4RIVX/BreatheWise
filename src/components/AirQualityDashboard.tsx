@@ -448,7 +448,8 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
                     className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900"
                   >
                     Partial CPCB catalog notice: upstream API returned{" "}
-                    {measured.stations.length} station(s) before pagination ended
+                    {measured.stations.length} station(s) before pagination
+                    ended
                     {measured.totalRecordsReported
                       ? ` (reported total: ${measured.totalRecordsReported} records)`
                       : ""}

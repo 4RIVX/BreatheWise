@@ -10,6 +10,7 @@ export interface ServerConfig {
   groqApiKey: string;
   groqModel: string;
   dataGovInApiKey: string;
+  openAqApiKey: string;
   allowedOrigins: string[];
   rateLimitRedisRestUrl: string;
   rateLimitRedisRestToken: string;
@@ -108,6 +109,36 @@ export function loadServerConfig(
   const anonLimit = Number(env.AI_ANON_RATE_LIMIT_MAX ?? 6);
   const authLimit = Number(env.AI_AUTH_RATE_LIMIT_MAX ?? 20);
 
+  const rateLimitRedisRestUrl = (env.RATE_LIMIT_REDIS_REST_URL ?? "").trim();
+  const rateLimitRedisRestToken = (
+    env.RATE_LIMIT_REDIS_REST_TOKEN ?? ""
+  ).trim();
+
+  if (
+    nodeEnv === "production" &&
+    (!rateLimitRedisRestUrl || !rateLimitRedisRestToken)
+  ) {
+    throw new Error(
+      "RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN are required in production for distributed multi-instance rate limiting."
+    );
+  }
+
+  if (
+    nodeEnv === "production" &&
+    env.GEMINI_MODEL !== undefined &&
+    !env.GEMINI_MODEL.trim()
+  ) {
+    throw new Error("GEMINI_MODEL cannot be blank in production.");
+  }
+
+  if (
+    nodeEnv === "production" &&
+    env.GROQ_MODEL !== undefined &&
+    !env.GROQ_MODEL.trim()
+  ) {
+    throw new Error("GROQ_MODEL cannot be blank in production.");
+  }
+
   return {
     port: Number(env.PORT ?? 3000),
     host: env.HOST ?? "0.0.0.0",
@@ -121,9 +152,10 @@ export function loadServerConfig(
       (env.GROQ_MODEL ?? "llama-3.3-70b-versatile").trim() ||
       "llama-3.3-70b-versatile",
     dataGovInApiKey: (env.DATA_GOV_IN_API_KEY ?? "").trim(),
+    openAqApiKey: (env.OPENAQ_API_KEY ?? "").trim(),
     allowedOrigins: parseAllowedOrigins(env.ALLOWED_ORIGIN, nodeEnv),
-    rateLimitRedisRestUrl: (env.RATE_LIMIT_REDIS_REST_URL ?? "").trim(),
-    rateLimitRedisRestToken: (env.RATE_LIMIT_REDIS_REST_TOKEN ?? "").trim(),
+    rateLimitRedisRestUrl,
+    rateLimitRedisRestToken,
     aiAnonymousRateLimitMax:
       Number.isFinite(anonLimit) && anonLimit > 0 ? Math.floor(anonLimit) : 6,
     aiAuthenticatedRateLimitMax:

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   calculateIndianAqi,
   calculatePollutantSubIndex,
+  computeMax8HourRollingAverageOver24Hours,
   computeRollingAverage,
   computeTimeBoundedRollingAverage,
   getIndianAqiCategory,
+  getRequiredMinimumHours,
   isDataStale,
   normalizePollutantConcentration,
 } from "../../src/domain/indianAqi";
@@ -107,7 +109,7 @@ describe("Indian National AQI Methodology (CPCB)", () => {
         concentration: 1.5,
         unit: "mg/m3",
         averagingPeriodHours: 8,
-        sampleHoursCount: 8,
+        sampleHoursCount: 16,
       },
     ]);
 
@@ -176,7 +178,7 @@ describe("Indian National AQI Methodology (CPCB)", () => {
         concentration: 1000,
         unit: "ug/m3",
         averagingPeriodHours: 8,
-        sampleHoursCount: 8,
+        sampleHoursCount: 16,
       },
     ]);
 
@@ -246,5 +248,105 @@ describe("Indian National AQI Methodology (CPCB)", () => {
     );
     expect(bounded.validCount).toBe(3);
     expect(bounded.mean).toBe(40);
+  });
+
+  it("enforces CPCB 16-hour minimum for CO and O3 as well as 24-hour pollutants", () => {
+    expect(getRequiredMinimumHours(24)).toBe(16);
+    expect(getRequiredMinimumHours(8)).toBe(16);
+
+    const res = calculateIndianAqi([
+      {
+        code: "PM2.5",
+        concentration: 50,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+        sampleHoursCount: 20,
+      },
+      {
+        code: "PM10",
+        concentration: 90,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+        sampleHoursCount: 20,
+      },
+      {
+        code: "CO",
+        concentration: 2.0,
+        unit: "mg/m3",
+        averagingPeriodHours: 8,
+        sampleHoursCount: 8, // rejected: < 16h CPCB rule
+      },
+    ]);
+    expect(res.calculable).toBe(false);
+    expect(res.validPollutantCount).toBe(2);
+    expect(res.reasonIfNotCalculable).toContain("minimum 16h required");
+  });
+
+  it("marks far-future timestamps as stale instead of clamping to age 0", () => {
+    const now = new Date("2026-01-15T12:00:00Z");
+    const farFuture = isDataStale("2026-01-16T12:00:00Z", now, 180, 5);
+    expect(farFuture.stale).toBe(true);
+    expect(farFuture.isFuture).toBe(true);
+    expect(farFuture.ageMinutes).toBeLessThan(0);
+
+    const slightSkew = isDataStale("2026-01-15T12:02:00Z", now, 180, 5);
+    expect(slightSkew.stale).toBe(false);
+    expect(slightSkew.ageMinutes).toBe(0);
+  });
+
+  it("computes CPCB max 8-hour rolling average over 24 hours for O3 and CO", () => {
+    const baseMs = new Date("2026-03-01T00:00:00Z").getTime();
+    const samples = Array.from({ length: 24 }, (_, idx) => ({
+      timeIso: new Date(baseMs + idx * 3_600_000).toISOString(),
+      // Peak 8h window from hour 8..15 has value 120; other hours have value 40
+      value: idx >= 8 && idx <= 15 ? 120 : 40,
+    }));
+    const refIso = new Date(baseMs + 23 * 3_600_000).toISOString();
+    const roll = computeMax8HourRollingAverageOver24Hours(samples, refIso);
+    expect(roll.validCount).toBe(24);
+    expect(roll.mean).toBe(120);
+
+    // Gap test: 10 missing hours inside the 24h window cannot be filled from hours [-6..-1] before window start
+    const earlierSamples = Array.from({ length: 6 }, (_, i) => ({
+      timeIso: new Date(baseMs - (6 - i) * 3_600_000).toISOString(),
+      value: 200,
+    }));
+    const sparse24h = Array.from({ length: 14 }, (_, i) => ({
+      timeIso: new Date(baseMs + i * 3_600_000).toISOString(),
+      value: 50,
+    }));
+    const pmBounded = computeTimeBoundedRollingAverage(
+      [...earlierSamples, ...sparse24h],
+      refIso,
+      24
+    );
+    expect(pmBounded.validCount).toBe(14);
+    expect(pmBounded.mean).toBe(50);
+
+    const insufficientRes = calculateIndianAqi([
+      {
+        code: "PM2.5",
+        concentration: pmBounded.mean!,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+        sampleHoursCount: pmBounded.validCount,
+      },
+      {
+        code: "PM10",
+        concentration: 90,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+        sampleHoursCount: 20,
+      },
+      {
+        code: "NO2",
+        concentration: 40,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+        sampleHoursCount: 20,
+      },
+    ]);
+    expect(insufficientRes.calculable).toBe(false);
+    expect(insufficientRes.reasonIfNotCalculable).toContain("minimum 16h required");
   });
 });

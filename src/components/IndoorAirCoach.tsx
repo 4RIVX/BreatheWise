@@ -21,14 +21,14 @@ const INDOOR_GUIDANCE_ITEMS = [
       "Operate a dedicated ducted kitchen chimney or high-flow exhaust fan during all frying, roasting, and tempering. Cooking produces high peaks of ultrafine PM2.5, acrolein, and NO2 that must be expelled at the source.",
   },
   {
-    title: "HEPA Filtration & Limits on Gaseous VOCs / CO",
+    title: "HEPA Limits, Activated Carbon & CO Safety",
     detail:
-      "True HEPA (H13/H14) filters trap airborne particulate matter (PM2.5, PM10, allergens, combustion soot) with ≥99.97% efficiency at 0.3 microns (the most penetrating particle size). However, HEPA mechanical filters do NOT capture gaseous pollutants, VOCs, formaldehyde, ozone, or carbon monoxide (CO). Gaseous abatement requires dedicated activated carbon adsorption beds. Strictly avoid electronic ionizers, plasma generators, or ozone-generating 'air cleaners' which produce respiratory tract irritants.",
+      "True HEPA (H13/H14) mechanical filters trap airborne particulates (PM2.5, PM10, allergens, combustion soot) at ≥99.97% efficiency at 0.3 microns, but do NOT capture gases, VOCs, formaldehyde, ozone, or carbon monoxide (CO). Activated carbon can adsorb certain gases and VOCs depending on the sorbent medium, bed mass, and remaining capacity, but ordinary portable activated-carbon purifiers do NOT reliably remove carbon monoxide (CO). Install certified CO alarms and maintain combustion-source safety with outdoor-vented stoves, chimneys, and heaters. Avoid electronic ionizers, plasma cleaners, or ozone generators that release airway irritants.",
   },
   {
-    title: "Portable HEPA Sizing (ACH) & Timed Ventilation",
+    title: "Purifier Sizing (ACH) & Real-World Clean Air",
     detail:
-      "During severe outdoor smog episodes, keep exterior windows closed and size portable HEPA purifiers to deliver roughly 4–6 air changes per hour (ACH) in the closed room so fine particulate concentrations decay rapidly (note: CDC/NIOSH 'Aim for 5+' ACH guidance is an infectious-aerosol dilution target, while ASHRAE 62.2 defines minimum outdoor-air ventilation rates rather than smog filtration targets). Time natural cross-ventilation only when ambient PM2.5 drops during midday convective mixing.",
+      "During outdoor smog episodes, keep exterior windows closed and use 3–6 ACH options strictly as illustrative purifier-sizing benchmarks for enclosed rooms rather than universal medical rules. Real-world effective clean-air delivery depends on purifier performance, room air leakage, unit placement, filter condition, and room air mixing. Open windows for natural cross-ventilation only when current verified air-quality and local visibility conditions show clean outdoor air rather than on a fixed schedule.",
   },
 ];
 
@@ -295,15 +295,16 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                   <strong>Calculator Scope:</strong> {metrics.disclaimer}
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  <strong>Scientific Scope &amp; Attribution:</strong> CADR
-                  (Clean Air Delivery Rate) measures particulate clearance
-                  volume per unit time in a well-mixed enclosed room; 3–6 ACH
-                  options here are practical purifier-sizing benchmarks for
-                  particulate decay with windows shut (not ASHRAE 62.2 outdoor
-                  ventilation rates or CDC infectious-aerosol rules). True HEPA
-                  captures particulate matter (&ge;99.97% at 0.3 &mu;m) but
-                  requires dedicated activated carbon for gaseous VOC/odor
-                  adsorption.
+                  <strong>Scientific Scope &amp; Limitations:</strong> CADR
+                  (Clean Air Delivery Rate) estimates particulate clearance flow
+                  under ideal well-mixed room assumptions; the 3–6 ACH selector
+                  provides illustrative purifier-sizing benchmarks rather than
+                  universal medical prescriptions. Actual indoor clean air
+                  depends on purifier performance, room air leakage, unit
+                  placement, filter condition, and room air mixing. HEPA
+                  recirculation does not supply outdoor oxygen or remove carbon
+                  monoxide (CO)—rely on certified CO alarms and vented
+                  combustion appliances.
                 </p>
               </div>
             </div>

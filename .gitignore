@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build & cache outputs
+dist/
+.vite/
+*.tsbuildinfo
+coverage/
+
+# Environment variables (keep template .env.example)
+.env*
+!.env.example
+
+# Firebase service accounts, local CLI cache & emulator artifacts
+*service-account*.json
+*serviceAccount*.json
+.firebase/
+emulator-data/
+firebase-export-*
+
+# Logs
+*.log
+firebase-debug*.log
+firestore-debug*.log
+
+# Verification & OS artifacts
+.playwright-cli/
+.DS_Store
+Thumbs.db
+package-lock.json

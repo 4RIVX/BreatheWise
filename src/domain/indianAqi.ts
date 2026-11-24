@@ -121,9 +121,10 @@ export function getExpectedAveragingPeriod(code: PollutantCode): 8 | 24 {
   return code === "CO" || code === "O3" ? 8 : 24;
 }
 
-export function getRequiredMinimumHours(periodHours: 8 | 24): number {
-  // CPCB minimum 75% data completeness criteria (16h of 24h, 6h of 8h)
-  return periodHours === 24 ? 16 : 6;
+export function getRequiredMinimumHours(_periodHours: 8 | 24): number {
+  // CPCB How_AQI_Calculated.pdf: A minimum of 16 hours of data is necessary
+  // for calculating any pollutant sub-index (including 8-hour CO / O3 over 24h).
+  return 16;
 }
 
 export function getIndianAqiCategory(aqi: number): IndianAqiCategory {
@@ -376,11 +377,82 @@ export function computeTimeBoundedRollingAverage(
   };
 }
 
+/**
+ * Computes CPCB's 8-hour rolling maximum average over the 24-hour period ending
+ * at `referenceTimeIso` (for CO and O3). Returns the highest valid 8-hour
+ * sub-window mean along with `validCount` = distinct valid hours in the 24h span
+ * (which CPCB requires to be >= 16 hours).
+ */
+export function computeMax8HourRollingAverageOver24Hours(
+  samples: TimedHourlySample[],
+  referenceTimeIso: string
+): { mean: number | null; validCount: number } {
+  const endMs = new Date(referenceTimeIso).getTime();
+  if (Number.isNaN(endMs)) {
+    return { mean: null, validCount: 0 };
+  }
+
+  const endHourKey = Math.floor(endMs / 3_600_000);
+  const start24Key = endHourKey - 23;
+  const hourMap = new Map<number, number>();
+
+  for (const sample of samples) {
+    if (
+      typeof sample.value !== "number" ||
+      !Number.isFinite(sample.value) ||
+      sample.value < 0
+    ) {
+      continue;
+    }
+    const ms = new Date(sample.timeIso).getTime();
+    if (Number.isNaN(ms)) continue;
+    const hourKey = Math.floor(ms / 3_600_000);
+    if (hourKey < start24Key || hourKey > endHourKey) continue;
+    if (!hourMap.has(hourKey)) {
+      hourMap.set(hourKey, sample.value);
+    }
+  }
+
+  const validCount = hourMap.size;
+  if (validCount === 0) {
+    return { mean: null, validCount: 0 };
+  }
+
+  let maxMean = -Infinity;
+  for (let wEnd = start24Key + 7; wEnd <= endHourKey; wEnd += 1) {
+    let sum = 0;
+    let count = 0;
+    for (let h = wEnd - 7; h <= wEnd; h += 1) {
+      const val = hourMap.get(h);
+      if (val !== undefined) {
+        sum += val;
+        count += 1;
+      }
+    }
+    if (count >= 6) {
+      const mean = sum / count;
+      if (mean > maxMean) {
+        maxMean = mean;
+      }
+    }
+  }
+
+  if (maxMean === -Infinity) {
+    return { mean: null, validCount };
+  }
+
+  return {
+    mean: Number(maxMean.toFixed(2)),
+    validCount,
+  };
+}
+
 export function isDataStale(
   timestampIsoOrDate: string | Date,
   now: Date = new Date(),
-  maxAgeMinutes: number = 180
-): { stale: boolean; ageMinutes: number | null } {
+  maxAgeMinutes: number = 180,
+  maxFutureSkewMinutes: number = 5
+): { stale: boolean; ageMinutes: number | null; isFuture?: boolean } {
   const parsed =
     timestampIsoOrDate instanceof Date
       ? timestampIsoOrDate
@@ -389,6 +461,14 @@ export function isDataStale(
     return { stale: true, ageMinutes: null };
   }
   const diffMs = now.getTime() - parsed.getTime();
+  const futureSkewLimitMs = Math.max(0, maxFutureSkewMinutes) * 60_000;
+  if (diffMs < -futureSkewLimitMs) {
+    return {
+      stale: true,
+      ageMinutes: Math.round(diffMs / 60000),
+      isFuture: true,
+    };
+  }
   const ageMinutes = Math.max(0, Math.round(diffMs / 60000));
   return {
     stale: ageMinutes > maxAgeMinutes,

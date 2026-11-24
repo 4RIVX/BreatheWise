@@ -125,14 +125,14 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
 
         <div>
           <p className="text-xs font-medium text-slate-500">
-            Today&apos;s Estimated CO2e Avoided
+            Today&apos;s Estimated CO2 Avoided
           </p>
           <p className="text-2xl font-mono font-semibold tabular-nums text-teal-800 mt-1">
             {totals.co2Today.toFixed(1)}{" "}
             <span className="text-xs font-normal text-slate-500">kg</span>
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Based on logged routine emission estimates
+            Requires mobility trip log calculation (routines start at 0.0)
           </p>
         </div>
 
@@ -145,7 +145,7 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
             <span className="text-xs font-normal text-slate-500">actions</span>
           </p>
           <p className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
-            ~{totals.weeklyCo2.toFixed(1)} kg CO2e cumulative
+            ~{totals.weeklyCo2.toFixed(1)} kg CO2 cumulative
           </p>
         </div>
       </div>
@@ -302,7 +302,7 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
               </span>
               <span>
                 {routine.co2SavedKg > 0
-                  ? `~${routine.co2SavedKg.toFixed(1)} kg CO2e`
+                  ? `~${routine.co2SavedKg.toFixed(1)} kg CO2`
                   : "Habit Log"}
               </span>
             </div>

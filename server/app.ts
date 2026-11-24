@@ -16,6 +16,10 @@ import {
   type CpcbProviderResponse,
 } from "./providers/cpcbProvider.ts";
 import {
+  fetchOpenAqHourlyStations,
+  type OpenAqProviderResponse,
+} from "./providers/openAqProvider.ts";
+import {
   fetchOpenMeteoForecast,
   getOpenMeteoCacheStats,
   type OpenMeteoForecastResult,
@@ -108,8 +112,9 @@ export function createApp(deps: AppDependencies = {}) {
   app.use(express.json({ limit: "256kb" }));
 
   const limiterEnabled = deps.enableRateLimit !== false;
-  const apiStore =
-    deps.rateLimitStore instanceof MemoryRateLimitStore
+  const apiStore = !limiterEnabled
+    ? new MemoryRateLimitStore({ prefix: "disabled-api:" })
+    : deps.rateLimitStore instanceof MemoryRateLimitStore
       ? new MemoryRateLimitStore({
           sharedHits: deps.rateLimitStore.hits,
           prefix: "api:",
@@ -118,8 +123,9 @@ export function createApp(deps: AppDependencies = {}) {
         ? deps.rateLimitStore.withPrefix("bw:dist:api:")
         : (deps.rateLimitStore ??
           createRateLimitStore(config, fetchImpl, "bw:dist:api:"));
-  const aiStore =
-    deps.rateLimitStore instanceof MemoryRateLimitStore
+  const aiStore = !limiterEnabled
+    ? new MemoryRateLimitStore({ prefix: "disabled-ai:" })
+    : deps.rateLimitStore instanceof MemoryRateLimitStore
       ? new MemoryRateLimitStore({
           sharedHits: deps.rateLimitStore.hits,
           prefix: "ai:",
@@ -245,6 +251,7 @@ export function createApp(deps: AppDependencies = {}) {
           config.aiFallbackProvider && fallbackConfigured
         ),
         cpcbApiConfigured: Boolean(config.dataGovInApiKey),
+        openAqApiConfigured: Boolean(config.openAqApiKey),
         openMeteoEnabled: true,
         aiAuthRequired: config.requireAiAuth,
         distributedRateLimitConfigured: Boolean(
@@ -280,27 +287,61 @@ export function createApp(deps: AppDependencies = {}) {
 
       const { city, state, latitude, longitude } = parsed.data;
 
-      const [cpcb, openMeteo]: [CpcbProviderResponse, OpenMeteoForecastResult] =
-        await Promise.all([
-          fetchCpcbStations({
-            city,
-            state,
-            apiKey: config.dataGovInApiKey,
-            fetchImpl,
-          }),
-          fetchOpenMeteoForecast({
-            latitude,
-            longitude,
-            fetchImpl,
-          }),
-        ]);
+      const [cpcb, openAq, openMeteo]: [
+        CpcbProviderResponse,
+        OpenAqProviderResponse,
+        OpenMeteoForecastResult,
+      ] = await Promise.all([
+        fetchCpcbStations({
+          city,
+          state,
+          apiKey: config.dataGovInApiKey,
+          fetchImpl,
+        }),
+        fetchOpenAqHourlyStations({
+          city,
+          state,
+          latitude,
+          longitude,
+          apiKey: config.openAqApiKey,
+          fetchImpl,
+        }),
+        fetchOpenMeteoForecast({
+          latitude,
+          longitude,
+          fetchImpl,
+        }),
+      ]);
+
+      const measured: CpcbProviderResponse =
+        openAq.status === "available" && openAq.stations.length > 0
+          ? {
+              status: "available",
+              message:
+                cpcb.status === "available"
+                  ? `${openAq.stations.length} OpenAQ v3 hourly station(s) + ${cpcb.stations.length} CPCB station(s) loaded for ${city}.`
+                  : openAq.message,
+              resourceId:
+                cpcb.status === "available" ? cpcb.resourceId : "openaq-v3",
+              stations: [
+                ...openAq.stations,
+                ...(cpcb.status === "available" ? cpcb.stations : []),
+              ],
+              cached:
+                openAq.cached && (cpcb.status !== "available" || cpcb.cached),
+              fetchedAtIso: openAq.fetchedAtIso,
+              totalRecordsReported: cpcb.totalRecordsReported,
+              isPaginationComplete:
+                cpcb.status === "available" ? cpcb.isPaginationComplete : true,
+            }
+          : cpcb;
 
       const bothUnavailable =
-        cpcb.status === "unavailable" && openMeteo.status === "unavailable";
+        measured.status === "unavailable" && openMeteo.status === "unavailable";
 
       res.status(bothUnavailable ? 503 : 200).json({
         location: { city, state: state ?? null, latitude, longitude },
-        measured: cpcb,
+        measured,
         modelled: openMeteo,
         retrievedAtIso: new Date().toISOString(),
       });
@@ -346,6 +387,7 @@ export function createApp(deps: AppDependencies = {}) {
         const verified = await buildServerVerifiedAirContext({
           location: parsed.data.location,
           dataGovInApiKey: config.dataGovInApiKey,
+          openAqApiKey: config.openAqApiKey,
           fetchImpl,
         });
 
@@ -428,6 +470,7 @@ export function createApp(deps: AppDependencies = {}) {
         const verified = await buildServerVerifiedAirContext({
           location: parsed.data.location,
           dataGovInApiKey: config.dataGovInApiKey,
+          openAqApiKey: config.openAqApiKey,
           fetchImpl,
         });
 

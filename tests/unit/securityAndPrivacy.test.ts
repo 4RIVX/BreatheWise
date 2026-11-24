@@ -25,6 +25,10 @@ import {
   OpenMeteoAqSchema,
   OpenMeteoWeatherSchema,
 } from "../../server/providers/openMeteoProvider";
+import {
+  clearOpenAqCache,
+  fetchOpenAqHourlyStations,
+} from "../../server/providers/openAqProvider";
 import { buildServerVerifiedAirContext } from "../../server/services/verifiedAirContextBuilder";
 
 function formatCpcbIstTimestamp(minutesAgo: number): string {
@@ -226,6 +230,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
         pollutant_avg: "80",
         pollutant_min: "120", // min > max (corrupted)
         pollutant_max: "60",
+        pollutant_unit: "ug/m3",
         sample_hours: 24,
         last_update: "20-01-2026 12:00:00",
       },
@@ -237,6 +242,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
         pollutant_avg: "80",
         pollutant_min: "40",
         pollutant_max: "120",
+        pollutant_unit: "ug/m3",
         last_update: "20-01-2026 12:00:00",
       },
       {
@@ -247,6 +253,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
         pollutant_avg: "80",
         pollutant_min: "40",
         pollutant_max: "120",
+        pollutant_unit: "ug/m3",
         sample_hours: 20,
         last_update: "20-01-2026 12:00:00",
       },
@@ -258,6 +265,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
         pollutant_avg: "110",
         pollutant_min: "60",
         pollutant_max: "150",
+        pollutant_unit: "ug/m3",
         sample_hours: 20,
         last_update: "20-01-2026 12:00:00",
       },
@@ -269,6 +277,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
         pollutant_avg: "45",
         pollutant_min: "20",
         pollutant_max: "70",
+        pollutant_unit: "ug/m3",
         sample_hours: 20,
         last_update: "20-01-2026 12:00:00",
       },
@@ -313,6 +322,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 longitude: 77.591,
                 pollutant_id: "PM2.5",
                 pollutant_avg: "50",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: staleTs,
               },
@@ -324,6 +334,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 longitude: 77.591,
                 pollutant_id: "PM10",
                 pollutant_avg: "80",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: staleTs,
               },
@@ -335,6 +346,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 longitude: 77.591,
                 pollutant_id: "NO2",
                 pollutant_avg: "30",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: staleTs,
               },
@@ -346,6 +358,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 longitude: 77.6,
                 pollutant_id: "PM2.5",
                 pollutant_avg: "55",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: recentTs,
               },
@@ -357,6 +370,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 longitude: 77.6,
                 pollutant_id: "PM10",
                 pollutant_avg: "90",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: recentTs,
               },
@@ -368,6 +382,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 longitude: 77.6,
                 pollutant_id: "NO2",
                 pollutant_avg: "30",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: recentTs,
               },
@@ -697,6 +712,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 state: "Telangana",
                 pollutant_id: "PM2.5",
                 pollutant_avg: "45",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: freshTs,
               },
@@ -706,6 +722,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 state: "Telangana",
                 pollutant_id: "PM10",
                 pollutant_avg: "90",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: freshTs,
               },
@@ -715,6 +732,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 state: "Telangana",
                 pollutant_id: "NO2",
                 pollutant_avg: "30",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: freshTs,
               },
@@ -724,6 +742,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
                 state: "Telangana",
                 pollutant_id: "PM2.5",
                 pollutant_avg: "40",
+                pollutant_unit: "ug/m3",
                 sample_hours: 24,
                 last_update: freshTs,
               })),
@@ -751,5 +770,390 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     });
     expect(ctxRes.airContext.measuredSourceAvailable).toBe(false);
     expect(ctxRes.airContext.dataLimitations).toContain("incomplete");
+
+    // 3. Overlapping duplicates across pages are deduplicated accurately; missing unique records mark incomplete
+    clearCpcbCache();
+    const dupShortfallFetch: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get("offset") || "0");
+      if (offset === 0) {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            total: 105,
+            records: Array.from({ length: 100 }, (_, i) => ({
+              station: `Station-${i}`,
+              city: "Hyderabad",
+              state: "Telangana",
+              pollutant_id: "PM2.5",
+              pollutant_avg: "45",
+              pollutant_unit: "ug/m3",
+              sample_hours: 24,
+              last_update: freshTs,
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      // Page 2 repeats Station-0..4 instead of delivering 5 new unique stations -> 100 unique < 105 reported total
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          total: 105,
+          records: Array.from({ length: 5 }, (_, i) => ({
+            station: `Station-${i}`,
+            city: "Hyderabad",
+            state: "Telangana",
+            pollutant_id: "PM2.5",
+            pollutant_avg: "45",
+            pollutant_unit: "ug/m3",
+            sample_hours: 24,
+            last_update: freshTs,
+          })),
+        }),
+        { status: 200 }
+      );
+    };
+    const dupShortfallRes = await fetchCpcbStations({
+      city: "Hyderabad",
+      state: "Telangana",
+      apiKey: "pagination-test-key",
+      fetchImpl: dupShortfallFetch,
+    });
+    expect(dupShortfallRes.stations.length).toBe(100);
+    expect(dupShortfallRes.isPaginationComplete).toBe(false);
+
+    // 4. Unknown total hitting maxOffset (2500) must report incomplete pagination
+    clearCpcbCache();
+    const maxOffsetFetch: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get("offset") || "0");
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          records: Array.from({ length: 100 }, (_, i) => ({
+            station: `Station-${offset}-${i}`,
+            city: "Delhi",
+            state: "Delhi",
+            pollutant_id: "PM2.5",
+            pollutant_avg: "45",
+            pollutant_unit: "ug/m3",
+            sample_hours: 24,
+            last_update: freshTs,
+          })),
+        }),
+        { status: 200 }
+      );
+    };
+    const maxOffsetRes = await fetchCpcbStations({
+      city: "Delhi",
+      state: "Delhi",
+      apiKey: "pagination-test-key",
+      fetchImpl: maxOffsetFetch,
+    });
+    expect(maxOffsetRes.totalRecordsReported).toBeNull();
+    expect(maxOffsetRes.isPaginationComplete).toBe(false);
+  });
+
+  it("preserves CPCB pollutant_unit conversions (CO in ug/m3) and rejects missing/unrecognized units or mixed stale record timestamps", () => {
+    const now = new Date("2026-01-20T07:00:00Z"); // 12:30 IST
+    const stations = normalizeCpcbRecords(
+      [
+        {
+          station: "Unit Check Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "PM2.5",
+          pollutant_avg: "30",
+          pollutant_unit: "µg/m³",
+          sample_hours: 20,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Unit Check Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "PM10",
+          pollutant_avg: "50",
+          pollutant_unit: "ug/m3",
+          sample_hours: 20,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Unit Check Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "CO",
+          pollutant_avg: "2000",
+          pollutant_unit: "ug/m3",
+          sample_hours: 20,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Missing Unit Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "PM2.5",
+          pollutant_avg: "45",
+          sample_hours: 24,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Missing Unit Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "PM10",
+          pollutant_avg: "85",
+          pollutant_unit: "unknown-unit",
+          sample_hours: 24,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Missing Unit Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "NO2",
+          pollutant_avg: "35",
+          pollutant_unit: "ug/m3",
+          sample_hours: 24,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Mixed Timestamp Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "PM2.5",
+          pollutant_avg: "45",
+          pollutant_unit: "ug/m3",
+          sample_hours: 24,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Mixed Timestamp Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "PM10",
+          pollutant_avg: "80",
+          pollutant_unit: "ug/m3",
+          sample_hours: 24,
+          last_update: "20-01-2026 12:00:00",
+        },
+        {
+          station: "Mixed Timestamp Station",
+          city: "Chennai",
+          state: "Tamil Nadu",
+          pollutant_id: "NO2",
+          pollutant_avg: "35",
+          pollutant_unit: "ug/m3",
+          sample_hours: 24,
+          last_update: "19-01-2026 12:00:00", // stale 24h older than PM2.5!
+        },
+      ],
+      now
+    );
+
+    const unitStation = stations.find(
+      (s) => s.stationName === "Unit Check Station"
+    );
+    expect(unitStation?.indianAqi.calculable).toBe(true);
+    expect(unitStation?.indianAqi.aqi).toBe(100);
+    expect(unitStation?.indianAqi.prominentPollutant).toBe("CO");
+
+    const missingUnitStation = stations.find(
+      (s) => s.stationName === "Missing Unit Station"
+    );
+    expect(missingUnitStation?.indianAqi.calculable).toBe(false);
+    expect(missingUnitStation?.indianAqi.validPollutantCount).toBe(1);
+
+    const mixedTsStation = stations.find(
+      (s) => s.stationName === "Mixed Timestamp Station"
+    );
+    expect(mixedTsStation?.indianAqi.calculable).toBe(false);
+    expect(mixedTsStation?.indianAqi.validPollutantCount).toBe(2);
+  });
+
+  it("computes verified >=16h Indian AQI from OpenAQ v3 hourly monitoring series and rejects unaligned or stale Open-Meteo", async () => {
+    clearOpenAqCache();
+    clearCpcbCache();
+    clearOpenMeteoCache();
+
+    // 1. Open-Meteo missing current.time must fail cleanly instead of indexing hour 24
+    const unalignedOpenMeteoFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("air-quality-api.open-meteo.com")) {
+        return new Response(
+          JSON.stringify({
+            latitude: 13.08,
+            longitude: 80.27,
+            hourly: {
+              time: ["2026-03-01T08:00", "2026-03-01T09:00"],
+              pm2_5: [40, 42],
+            },
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("down", { status: 503 });
+    };
+
+    const unalignedRes = await fetchOpenMeteoForecast({
+      latitude: 13.08,
+      longitude: 80.27,
+      fetchImpl: unalignedOpenMeteoFetch,
+    });
+    expect(unalignedRes.status).toBe("unavailable");
+    expect(unalignedRes.message).toContain("current.time is missing");
+
+    // 2. Stale Open-Meteo forecast (from 2026-01-15) must be excluded from airContext
+    clearOpenMeteoCache();
+    const staleOpenMeteoFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("air-quality-api.open-meteo.com")) {
+        return new Response(
+          JSON.stringify({
+            latitude: 13.08,
+            longitude: 80.27,
+            current: { time: "2026-01-15T10:00", pm2_5: 55 },
+            hourly: {
+              time: ["2026-01-15T09:00", "2026-01-15T10:00"],
+              pm2_5: [50, 55],
+            },
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("down", { status: 503 });
+    };
+
+    const staleContext = await buildServerVerifiedAirContext({
+      location: { city: "Chennai", latitude: 13.08, longitude: 80.27 },
+      dataGovInApiKey: "",
+      fetchImpl: staleOpenMeteoFetch,
+    });
+    expect(staleContext.dataProvenance.modelledAvailable).toBe(false);
+    expect(staleContext.dataProvenance.modelledSource).toBeNull();
+    expect(staleContext.airContext.modelledPm25).toBeNull();
+    expect(staleContext.airContext.dataLimitations).toContain("stale");
+
+    // 3. OpenAQ v3 hourly monitoring series with >= 16h produces genuine verified CPCB AQI
+    const now = new Date();
+    const hourTimestamps = Array.from({ length: 20 }, (_, i) =>
+      new Date(now.getTime() - (20 - i) * 3_600_000).toISOString()
+    );
+    const openAqFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("api.openaq.org/v3/locations")) {
+        return new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: 9001,
+                name: "Alandur Bus Depot, Chennai - CPCB",
+                locality: "Chennai",
+                country: { code: "IN" },
+                coordinates: { latitude: 13.0, longitude: 80.2 },
+                sensors: [
+                  { id: 101, parameter: { name: "pm25", units: "µg/m³" } },
+                  { id: 102, parameter: { name: "pm10", units: "µg/m³" } },
+                  { id: 103, parameter: { name: "co", units: "mg/m³" } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/101/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: hourTimestamps.map((ts) => ({
+              value: 60,
+              parameter: { name: "pm25", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/102/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: hourTimestamps.map((ts) => ({
+              value: 95,
+              parameter: { name: "pm10", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/103/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: hourTimestamps.map((ts) => ({
+              value: 1.5,
+              parameter: { name: "co", units: "mg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("unavailable", { status: 503 });
+    };
+
+    const openAqRes = await fetchOpenAqHourlyStations({
+      city: "Chennai",
+      state: "Tamil Nadu",
+      latitude: 13.0,
+      longitude: 80.2,
+      apiKey: "test-openaq-key",
+      fetchImpl: openAqFetch,
+      now,
+    });
+
+    expect(openAqRes.status).toBe("available");
+    expect(openAqRes.stations).toHaveLength(1);
+    expect(openAqRes.stations[0].sourceLabel).toBe(
+      "CPCB / OpenAQ v3 Hourly Monitoring Station"
+    );
+    expect(openAqRes.stations[0].indianAqi.calculable).toBe(true);
+    expect(openAqRes.stations[0].indianAqi.aqi).toBe(100);
+    expect(openAqRes.stations[0].indianAqi.validPollutantCount).toBe(3);
+
+    clearOpenMeteoCache();
+    const verifiedFromOpenAq = await buildServerVerifiedAirContext({
+      location: {
+        city: "Chennai",
+        state: "Tamil Nadu",
+        latitude: 13.0,
+        longitude: 80.2,
+      },
+      dataGovInApiKey: "",
+      openAqApiKey: "test-openaq-key",
+      fetchImpl: openAqFetch,
+    });
+    expect(verifiedFromOpenAq.dataProvenance.measuredAvailable).toBe(true);
+    expect(verifiedFromOpenAq.dataProvenance.measuredSource).toBe(
+      "CPCB / OpenAQ v3 Hourly"
+    );
+    expect(verifiedFromOpenAq.airContext.measuredAqi).toBe(100);
+  });
+
+  it("enforces lockfile parity for sharp and typescript and keeps .gitignore present", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")
+    );
+    const bunLock = fs.readFileSync(
+      path.resolve(process.cwd(), "bun.lock"),
+      "utf-8"
+    );
+    expect(fs.existsSync(path.resolve(process.cwd(), ".gitignore"))).toBe(true);
+    expect(pkg.dependencies.sharp).toBe("^0.33.5");
+    expect(pkg.dependencies.typescript).toBe("^5.9.3");
+    expect(bunLock).toContain('"sharp": "^0.33.5"');
+    expect(bunLock).toContain('"typescript": "^5.9.3"');
+    expect(bunLock).toContain('"sharp@0.33.5"');
+    expect(bunLock).toContain('"typescript@5.9.3"');
   });
 });

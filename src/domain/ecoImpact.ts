@@ -46,7 +46,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     fuelType: "Petrol (BS-IV/VI avg fleet)",
     kgEmissionsPerVehicleKm: 0.171,
     kgEmissionsPerPassengerKm: 0.171,
-    ghgMetric: "CO2e",
+    ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
@@ -55,14 +55,14 @@ export const EMISSION_FACTORS_INDIA: Record<
       "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
     publisher: "WRI India, CII & TERI",
     publicationYear: 2015,
-    pageOrTableRef: "Table 4.2, Road Transport Emission Factors (Page 14)",
-    pollutantScope: "CO2e (Tank-to-Wheel)",
-    units: "kg CO2e per vehicle-km (divided by occupancy)",
+    pageOrTableRef: "Table 4.2, Road Transport Emission Factors (kg CO2/km)",
+    pollutantScope: "CO2 (Tank-to-Wheel; excludes non-CO2 GHGs CH4/N2O)",
+    units: "kg CO2 per vehicle-km (divided by occupancy)",
     calculationMethod:
-      "Tank-to-Wheel distance-based average passenger car factor",
+      "Tank-to-Wheel distance-based average passenger car CO2 factor with real-world uplift",
     geographicRelevance: "India urban & highway passenger fleet",
     limitations:
-      "Excludes upstream fuel refining; actual emissions vary with traffic congestion, AC load, and engine displacement.",
+      "Reports CO2 only (not full CO2e) and excludes upstream fuel refining; actual emissions vary with congestion, AC load, and engine displacement.",
     factorVersion: "IN-GHG-ROAD-2015-v2",
   },
   car_diesel: {
@@ -71,7 +71,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     fuelType: "Diesel",
     kgEmissionsPerVehicleKm: 0.167,
     kgEmissionsPerPassengerKm: 0.167,
-    ghgMetric: "CO2e",
+    ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
@@ -80,13 +80,14 @@ export const EMISSION_FACTORS_INDIA: Record<
       "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
     publisher: "WRI India, CII & TERI",
     publicationYear: 2015,
-    pageOrTableRef: "Table 4.3, Diesel Passenger Vehicles (Page 15)",
-    pollutantScope: "CO2e (Tank-to-Wheel)",
-    units: "kg CO2e per vehicle-km (divided by occupancy)",
-    calculationMethod: "Tank-to-Wheel distance-based average diesel car factor",
+    pageOrTableRef: "Table 4.3, Diesel Passenger Vehicles (kg CO2/km)",
+    pollutantScope: "CO2 (Tank-to-Wheel; excludes non-CO2 GHGs CH4/N2O)",
+    units: "kg CO2 per vehicle-km (divided by occupancy)",
+    calculationMethod:
+      "Tank-to-Wheel distance-based average diesel car CO2 factor",
     geographicRelevance: "India urban passenger fleet",
     limitations:
-      "CO2e only; diesel engines emit disproportionately higher NOx and PM2.5 than petrol per km.",
+      "Reports CO2 only (not full CO2e); diesel engines emit disproportionately higher NOx and PM2.5 than petrol per km.",
     factorVersion: "IN-GHG-ROAD-2015-v2",
   },
   car_cng: {
@@ -95,7 +96,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     fuelType: "Compressed Natural Gas",
     kgEmissionsPerVehicleKm: 0.129,
     kgEmissionsPerPassengerKm: 0.129,
-    ghgMetric: "CO2e",
+    ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
@@ -104,39 +105,41 @@ export const EMISSION_FACTORS_INDIA: Record<
       "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
     publisher: "WRI India",
     publicationYear: 2015,
-    pageOrTableRef: "Table 4.5, CNG Fleet Factors (Page 17)",
-    pollutantScope: "CO2e (Tank-to-Wheel)",
-    units: "kg CO2e per vehicle-km (divided by occupancy)",
-    calculationMethod: "Tank-to-Wheel distance-based CNG passenger factor",
+    pageOrTableRef: "Table 4.5, CNG Fleet Factors (kg CO2/km)",
+    pollutantScope: "CO2 (Tank-to-Wheel; excludes upstream CH4 leakage)",
+    units: "kg CO2 per vehicle-km (divided by occupancy)",
+    calculationMethod:
+      "Tank-to-Wheel distance-based CNG passenger car CO2 factor",
     geographicRelevance: "Indian metro cities (Delhi NCR, Mumbai, Ahmedabad)",
-    limitations: "Excludes upstream methane leakage in distribution pipelines.",
+    limitations:
+      "Reports CO2 only and excludes upstream methane (CH4) leakage in gas distribution pipelines.",
     factorVersion: "IN-GHG-CNG-2015-v2",
   },
   car_ev: {
     modeId: "car_ev",
     label: "Electric Car (India Grid)",
-    fuelType: "Grid Electricity (0.716 kg CO2/kWh)",
-    kgEmissionsPerVehicleKm: 0.115,
-    kgEmissionsPerPassengerKm: 0.115,
+    fuelType: "Grid Electricity (0.675 kg CO2/kWh, CEA v22.0)",
+    kgEmissionsPerVehicleKm: 0.108,
+    kgEmissionsPerPassengerKm: 0.108,
     ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
     source:
-      "CEA CO2 Baseline Database for the Indian Power Sector v20.0 + ARAI EV consumption (~0.16 kWh/km)",
+      "CEA CO2 Baseline Database for the Indian Power Sector v22.0 (Aug 2026) + EV consumption (~0.16 kWh/km)",
     sourceUrl: "https://cea.nic.in/cdm-co2-baseline-view/",
     publisher: "Central Electricity Authority (CEA) India & ARAI",
-    publicationYear: 2024,
+    publicationYear: 2026,
     pageOrTableRef:
-      "User Guide v20.0 (All-India Weighted Grid Average: 0.716 kg CO2/kWh)",
-    pollutantScope: "CO2 (Grid Generation)",
+      "Version 22.0 (FY 2025–26 All-India Weighted Average Grid Factor: 0.675 kg CO2/kWh)",
+    pollutantScope: "CO2 (Grid Power Generation)",
     units: "kg CO2 per vehicle-km (grid-weighted, divided by occupancy)",
     calculationMethod:
-      "Average Indian grid weighted emission factor (0.716 kg CO2/kWh) × 0.16 kWh/km",
-    geographicRelevance: "All-India Grid (2023-24 baseline)",
+      "All-India weighted average grid factor (0.675 kg CO2/kWh, CEA v22.0) × 0.16 kWh/km",
+    geographicRelevance: "All-India Grid (FY 2025–26 baseline)",
     limitations:
-      "Reflects CO2 from power generation only (not full CO2e); zero tailpipe exhaust, but upstream intensity depends on state renewable share and charging losses.",
-    factorVersion: "CEA-GRID-2024-v20",
+      "Reflects CO2 from power generation only (not full CO2e); zero tailpipe exhaust, but upstream intensity depends on regional grid mix and charging losses.",
+    factorVersion: "CEA-GRID-2026-v22",
   },
   two_wheeler_petrol: {
     modeId: "two_wheeler_petrol",
@@ -144,7 +147,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     fuelType: "Petrol (Motorcycle / Scooter)",
     kgEmissionsPerVehicleKm: 0.049,
     kgEmissionsPerPassengerKm: 0.049,
-    ghgMetric: "CO2e",
+    ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
@@ -153,37 +156,40 @@ export const EMISSION_FACTORS_INDIA: Record<
       "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
     publisher: "WRI India",
     publicationYear: 2015,
-    pageOrTableRef: "Table 5.1, Two-Wheeler Factors (Page 21)",
-    pollutantScope: "CO2e (Tank-to-Wheel)",
-    units: "kg CO2e per vehicle-km (divided by occupancy)",
-    calculationMethod: "Tank-to-Wheel Indian two-wheeler average (100–150cc)",
+    pageOrTableRef: "Table 5.1, Two-Wheeler Factors (kg CO2/km)",
+    pollutantScope: "CO2 (Tank-to-Wheel; excludes non-CO2 GHGs)",
+    units: "kg CO2 per vehicle-km (divided by occupancy)",
+    calculationMethod:
+      "Tank-to-Wheel Indian two-wheeler CO2 factor (mid-displacement fleet with uplift)",
     geographicRelevance: "India urban commuting fleet",
     limitations:
-      "Rider faces direct roadside PM2.5/NO2 exposure without cabin filtration.",
+      "Reports CO2 only; rider faces direct roadside PM2.5/NO2 exposure without cabin filtration.",
     factorVersion: "IN-GHG-2W-2015-v2",
   },
   auto_cng: {
     modeId: "auto_cng",
     label: "CNG Auto-Rickshaw",
-    fuelType: "CNG",
-    kgEmissionsPerVehicleKm: 0.068,
-    kgEmissionsPerPassengerKm: 0.068,
-    ghgMetric: "CO2e",
+    fuelType: "CNG (Three-Wheeler)",
+    kgEmissionsPerVehicleKm: 0.10768,
+    kgEmissionsPerPassengerKm: 0.10768,
+    ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: false,
-    source: "India GHG Program / WRI India — Three-Wheeler Urban Factor",
+    source:
+      "India GHG Program / WRI India — Three-Wheeler CNG Factor (0.10768 kg CO2/km)",
     sourceUrl:
       "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
-    publisher: "WRI India",
+    publisher: "WRI India, CII & TERI",
     publicationYear: 2015,
-    pageOrTableRef: "Table 5.4, Three-Wheeler CNG (Page 24)",
-    pollutantScope: "CO2e (Tank-to-Wheel)",
-    units: "kg CO2e per vehicle-km (divided by passenger occupancy)",
-    calculationMethod: "Tank-to-Wheel distance-based CNG three-wheeler factor",
-    geographicRelevance: "Indian urban corridors",
+    pageOrTableRef: "Summary Table, Three-Wheeler (CNG): 0.10768 kg CO2/km",
+    pollutantScope: "CO2 (Tank-to-Wheel; excludes CH4/N2O)",
+    units: "kg CO2 per vehicle-km (divided by passenger occupancy)",
+    calculationMethod:
+      "Distance-based CNG three-wheeler CO2 factor (distinct from small <800cc CNG passenger cars at 0.068 kg CO2/km)",
+    geographicRelevance: "Indian urban auto-rickshaw corridors",
     limitations:
-      "Open-cabin design offers minimal protection against ambient traffic particulate spikes.",
+      "Reports CO2 only; open-cabin design offers minimal protection against ambient traffic particulate spikes.",
     factorVersion: "IN-GHG-3W-2015-v2",
   },
   city_bus_diesel: {
@@ -202,11 +208,12 @@ export const EMISSION_FACTORS_INDIA: Record<
       "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
     publisher: "WRI India & Shakti Foundation",
     publicationYear: 2015,
-    pageOrTableRef: "Table 4.10, Standard City Bus Factor: 0.015161 kg CO2/p-km",
+    pageOrTableRef:
+      "Table 4.10, Standard City Bus Factor: 0.015161 kg CO2/p-km",
     pollutantScope: "CO2 (Tank-to-Wheel; excludes N2O/CH4)",
     units: "kg CO2 per passenger-km",
     calculationMethod:
-      "Average municipal standard transit bus emissions per passenger-km under urban driving cycle",
+      "Average municipal standard transit bus CO2 emissions per passenger-km under urban driving cycle",
     geographicRelevance:
       "Indian state & municipal transport undertakings (BMTC, DTC, MTC, BEST)",
     limitations:
@@ -216,74 +223,81 @@ export const EMISSION_FACTORS_INDIA: Record<
   city_bus_electric: {
     modeId: "city_bus_electric",
     label: "Electric Bus (India Grid)",
-    fuelType: "Grid Electricity",
+    fuelType: "Grid Electricity (CEA v22.0)",
     kgEmissionsPerVehicleKm: null,
-    kgEmissionsPerPassengerKm: 0.018,
+    kgEmissionsPerPassengerKm: 0.017,
     ghgMetric: "CO2",
     defaultOccupancy: 35,
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source:
-      "CEA CO2 Baseline v20.0 + FAME-II Urban E-Bus Benchmark (~0.88 kWh/km)",
+      "CEA CO2 Baseline v22.0 (Aug 2026) + FAME-II Urban E-Bus Benchmark (~0.88 kWh/km)",
     sourceUrl: "https://cea.nic.in/cdm-co2-baseline-view/",
     publisher: "CEA India & FAME-II",
-    publicationYear: 2024,
+    publicationYear: 2026,
     pageOrTableRef:
-      "Table 1.1 Grid Factor (0.716 kg CO2/kWh) + E-Bus Energy Benchmarks",
+      "Version 22.0 Grid Factor (0.675 kg CO2/kWh) + E-Bus Energy Benchmarks",
     pollutantScope: "CO2 (Grid Generation per Passenger-km)",
     units: "kg CO2 per passenger-km",
     calculationMethod:
-      "Grid factor (0.716 kg CO2/kWh) × 0.88 kWh/km ÷ 35 avg passengers",
+      "Grid factor (0.675 kg CO2/kWh, CEA v22.0) × 0.88 kWh/km ÷ 35 avg passengers",
     geographicRelevance: "Indian smart city e-bus corridors",
     limitations:
       "Reflects CO2 only (not full CO2e); actual kWh/km depends on air-conditioning load and stop-and-go congestion.",
-    factorVersion: "CEA-EBUS-2024-v20",
+    factorVersion: "CEA-EBUS-2026-v22",
   },
   metro_rail: {
     modeId: "metro_rail",
     label: "Metro Rail",
-    fuelType: "Grid Electricity",
+    fuelType: "Grid Electricity (CEA v22.0)",
     kgEmissionsPerVehicleKm: null,
-    kgEmissionsPerPassengerKm: 0.024,
+    kgEmissionsPerPassengerKm: 0.023,
     ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
-    source: "DMRC / CEA Grid Emission Baseline (0.716 kg CO2/kWh)",
-    sourceUrl: "https://www.delhimetrorail.com/",
+    source:
+      "DMRC Intensity Benchmark × CEA Grid Baseline v22.0 (0.675 kg CO2/kWh)",
+    sourceUrl: "https://cea.nic.in/cdm-co2-baseline-view/",
     publisher: "Delhi Metro Rail Corporation (DMRC) & CEA",
-    publicationYear: 2023,
-    pageOrTableRef: "DMRC Sustainability Report & CEA Grid Baseline v19",
+    publicationYear: 2026,
+    pageOrTableRef:
+      "CEA CO2 Baseline Database v22.0 (0.675 kg CO2/kWh) + DMRC (~0.034 kWh/p-km)",
     pollutantScope: "CO2 (Traction & Station Power)",
     units: "kg CO2 per passenger-km",
     calculationMethod:
-      "Traction & station electricity CO2 intensity per passenger-km on Indian metro networks",
+      "Traction & station electricity (~0.034 kWh/p-km) × All-India grid factor (0.675 kg CO2/kWh, CEA v22.0)",
     geographicRelevance:
       "Delhi, Chennai, Mumbai, Bengaluru, Kolkata Metro systems",
     limitations:
-      "Reflects CO2 only (not full CO2e); grid carbon intensity varies if metro procures dedicated solar/renewable PPAs.",
-    factorVersion: "IN-METRO-2023-v1",
+      "Reflects CO2 only (not full CO2e); grid carbon intensity is lower where metros procure dedicated solar/renewable PPAs.",
+    factorVersion: "IN-METRO-2026-v22",
   },
   suburban_rail: {
     modeId: "suburban_rail",
     label: "Suburban Rail (EMU)",
     fuelType: "Electric Traction",
     kgEmissionsPerVehicleKm: null,
-    kgEmissionsPerPassengerKm: 0.015,
-    ghgMetric: "CO2e",
+    kgEmissionsPerPassengerKm: 0.007976,
+    ghgMetric: "CO2",
     defaultOccupancy: 1,
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
-    source: "India GHG Program / Indian Railways Suburban Passenger Factor",
-    sourceUrl: "https://indianrailways.gov.in/",
-    publisher: "Indian Railways & WRI India",
+    source:
+      "India GHG Program / WRI India — India-Specific Rail Transport Emission Factors (0.007976 kg CO2/p-km)",
+    sourceUrl:
+      "https://shaktifoundation.in/wp-content/uploads/2021/12/WRI-2015-India-Specific-Road-Transport-Emission-Factors.pdf",
+    publisher: "Indian Railways & WRI India / TERI",
     publicationYear: 2015,
-    pageOrTableRef: "Table 7.2, Suburban EMU Energy Consumption",
-    pollutantScope: "CO2e (Electric Traction per Passenger-km)",
-    units: "kg CO2e per passenger-km",
-    calculationMethod: "High-occupancy electric multiple unit traction factor",
+    pageOrTableRef:
+      "Suburban Rail Passenger Factor: 7.976 g CO2/p-km (0.007976 kg CO2/p-km)",
+    pollutantScope: "CO2 (Electric Traction per Passenger-km)",
+    units: "kg CO2 per passenger-km",
+    calculationMethod:
+      "High-occupancy electric multiple unit (EMU) traction CO2 factor",
     geographicRelevance: "Mumbai, Chennai, Kolkata suburban networks",
-    limitations: "Peak overcrowding alters true per-passenger load factor.",
+    limitations:
+      "Reflects CO2 only based on 2015 traction baseline; peak overcrowding alters true per-passenger load factor.",
     factorVersion: "IN-SUBURBAN-2015-v1",
   },
   bicycle_walk: {
@@ -326,8 +340,10 @@ export interface EcoImpactResult {
   originalEmissionsMetric: GhgMetric;
   alternativeEmissionsKg: number;
   alternativeEmissionsMetric: GhgMetric;
-  emissionsAvoidedKg: number;
-  emissionsAvoidedMetricLabel: "CO2" | "CO2e" | "CO2 / CO2e (mixed scope)";
+  emissionsAvoidedKg: number | null;
+  isScopeIncompatible: boolean;
+  emissionsAvoidedMetricLabel:
+    "CO2" | "CO2e" | "Incompatible scopes (CO2 vs CO2e)";
   scopeWarning: string | null;
   vehicleTripsAvoided: number;
   originalFactor: EmissionFactorRecord;
@@ -348,34 +364,38 @@ export function getEffectivePassengerFactor(
   return factor.kgEmissionsPerPassengerKm;
 }
 
-function resolveDifferenceScope(
+export function resolveDifferenceScope(
   origMetric: GhgMetric,
   altMetric: GhgMetric
 ): {
-  label: "CO2" | "CO2e" | "CO2 / CO2e (mixed scope)";
+  label: "CO2" | "CO2e" | "Incompatible scopes (CO2 vs CO2e)";
+  incompatible: boolean;
   warning: string | null;
 } {
   if (origMetric === "ZERO" && altMetric === "ZERO") {
-    return { label: "CO2", warning: null };
+    return { label: "CO2", incompatible: false, warning: null };
   }
   if (origMetric === "ZERO") {
     return {
       label: altMetric === "CO2" ? "CO2" : "CO2e",
+      incompatible: false,
       warning: null,
     };
   }
   if (altMetric === "ZERO") {
     return {
       label: origMetric === "CO2" ? "CO2" : "CO2e",
+      incompatible: false,
       warning: null,
     };
   }
   if (origMetric === altMetric) {
-    return { label: origMetric, warning: null };
+    return { label: origMetric, incompatible: false, warning: null };
   }
   return {
-    label: "CO2 / CO2e (mixed scope)",
-    warning: `Scope Distinction: Baseline mode uses ${origMetric} while alternative mode uses ${altMetric} (excluding minor non-CO2 gases such as CH4/N2O). The avoided total reflects a cross-scope comparison rather than uniform full-CO2e accounting.`,
+    label: "Incompatible scopes (CO2 vs CO2e)",
+    incompatible: true,
+    warning: `Incompatible GHG Scopes: Baseline mode reports ${origMetric} while alternative mode reports ${altMetric}. Combined avoided emissions cannot be subtracted reliably across CO2 and CO2e scopes—inspect each footprint separately.`,
   };
 }
 
@@ -413,14 +433,14 @@ export function calculateEcoImpact(input: EcoImpactInput): EcoImpactResult {
   const alternativeEmissionsKg = Number(
     (totalDistanceKm * altPerPkm).toFixed(2)
   );
-  const emissionsAvoidedKg = Number(
-    (originalEmissionsKg - alternativeEmissionsKg).toFixed(2)
-  );
 
   const scopeInfo = resolveDifferenceScope(
     originalFactor.ghgMetric,
     alternativeFactor.ghgMetric
   );
+  const emissionsAvoidedKg = scopeInfo.incompatible
+    ? null
+    : Number((originalEmissionsKg - alternativeEmissionsKg).toFixed(2));
 
   let vehicleTripsAvoided = 0;
   if (
@@ -456,6 +476,7 @@ export function calculateEcoImpact(input: EcoImpactInput): EcoImpactResult {
     alternativeEmissionsKg,
     alternativeEmissionsMetric: alternativeFactor.ghgMetric,
     emissionsAvoidedKg,
+    isScopeIncompatible: scopeInfo.incompatible,
     emissionsAvoidedMetricLabel: scopeInfo.label,
     scopeWarning: scopeInfo.warning,
     vehicleTripsAvoided,

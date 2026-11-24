@@ -111,7 +111,9 @@ export const AskRequestSchema = z.object({
 
 export const DataProvenanceSchema = z.object({
   measuredAvailable: z.boolean(),
-  measuredSource: z.literal("CPCB / data.gov.in").nullable(),
+  measuredSource: z
+    .enum(["CPCB / data.gov.in", "CPCB / OpenAQ v3 Hourly"])
+    .nullable(),
   measuredStationCount: z.number().int().min(0),
   measuredCached: z.boolean(),
   modelledAvailable: z.boolean(),

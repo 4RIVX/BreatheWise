@@ -4,10 +4,12 @@ import request from "supertest";
 import { createApp } from "../../server/app";
 import { loadServerConfig, type ServerConfig } from "../../server/config";
 import {
+  DistributedRateLimitUnavailableError,
   MemoryRateLimitStore,
   RedisRestRateLimitStore,
 } from "../../server/utils/rateLimitStore";
 import { clearCpcbCache } from "../../server/providers/cpcbProvider";
+import { clearOpenAqCache } from "../../server/providers/openAqProvider";
 import { clearOpenMeteoCache } from "../../server/providers/openMeteoProvider";
 
 function recentCpcbIstString(minutesAgo = 20): string {
@@ -22,6 +24,15 @@ function recentCpcbIstString(minutesAgo = 20): string {
   return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
 }
 
+function formatOpenMeteoIstHour(utcMs: number): string {
+  const d = new Date(utcMs + 5.5 * 3_600_000);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:00`;
+}
+
 const BASE_CONFIG: ServerConfig = {
   port: 3000,
   host: "127.0.0.1",
@@ -32,6 +43,7 @@ const BASE_CONFIG: ServerConfig = {
   groqApiKey: "",
   groqModel: "llama-3.3-70b-versatile",
   dataGovInApiKey: "",
+  openAqApiKey: "",
   allowedOrigins: ["http://localhost:3000"],
   rateLimitRedisRestUrl: "",
   rateLimitRedisRestToken: "",
@@ -104,15 +116,16 @@ function buildSampleCpcbResponse() {
 }
 
 function buildSampleOpenMeteoAq() {
-  const times = Array.from({ length: 24 }, (_, idx) => {
-    const hh = String(idx).padStart(2, "0");
-    return `2026-01-15T${hh}:00`;
-  });
+  const nowHourMs = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+  const times = Array.from({ length: 48 }, (_, idx) =>
+    formatOpenMeteoIstHour(nowHourMs + (idx - 24) * 3_600_000)
+  );
+  const currentTime = times[24];
   return {
     latitude: 13.08,
     longitude: 80.27,
     current: {
-      time: "2026-01-15T12:00",
+      time: currentTime,
       pm2_5: 42.5,
       pm10: 78.2,
       nitrogen_dioxide: 26.4,
@@ -133,13 +146,14 @@ function buildSampleOpenMeteoAq() {
 }
 
 function buildSampleOpenMeteoWeather() {
-  const times = Array.from({ length: 24 }, (_, idx) => {
-    const hh = String(idx).padStart(2, "0");
-    return `2026-01-15T${hh}:00`;
-  });
+  const nowHourMs = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+  const times = Array.from({ length: 48 }, (_, idx) =>
+    formatOpenMeteoIstHour(nowHourMs + (idx - 24) * 3_600_000)
+  );
+  const currentTime = times[24];
   return {
     current: {
-      time: "2026-01-15T12:00",
+      time: currentTime,
       temperature_2m: 29.5,
       relative_humidity_2m: 64,
       wind_speed_10m: 13.2,
@@ -229,6 +243,7 @@ const VALID_GUIDANCE_SAMPLE = {
 describe("Express API Integration & Security Tests", () => {
   beforeEach(() => {
     clearCpcbCache();
+    clearOpenAqCache();
     clearOpenMeteoCache();
   });
 
@@ -262,7 +277,7 @@ describe("Express API Integration & Security Tests", () => {
     expect(JSON.stringify(res.body)).not.toContain("secret-k");
   });
 
-  it("validates ServerConfig strictly against invalid providers, wildcards, and missing production origins", () => {
+  it("validates ServerConfig strictly against invalid providers, wildcards, missing production origins, and missing production Redis", () => {
     expect(() =>
       loadServerConfig({ AI_PROVIDER: "unknown-llm" })
     ).toThrow(/Invalid AI_PROVIDER/i);
@@ -276,12 +291,35 @@ describe("Express API Integration & Security Tests", () => {
       loadServerConfig({ ALLOWED_ORIGIN: "*" })
     ).toThrow(/Wildcard/i);
     expect(() =>
-      loadServerConfig({ NODE_ENV: "production", ALLOWED_ORIGIN: "" })
+      loadServerConfig({
+        NODE_ENV: "production",
+        ALLOWED_ORIGIN: "",
+        RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
+        RATE_LIMIT_REDIS_REST_TOKEN: "tok",
+      })
     ).toThrow(/ALLOWED_ORIGIN must explicitly specify/i);
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
+      })
+    ).toThrow(/RATE_LIMIT_REDIS_REST_URL/i);
+
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
+        RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
+        RATE_LIMIT_REDIS_REST_TOKEN: "tok",
+        GEMINI_MODEL: "   ",
+      })
+    ).toThrow(/GEMINI_MODEL/i);
 
     const prodConfig = loadServerConfig({
       NODE_ENV: "production",
       ALLOWED_ORIGIN: "https://breathewise.example",
+      RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
+      RATE_LIMIT_REDIS_REST_TOKEN: "tok",
       AI_PROVIDER: "gemini",
       AI_FALLBACK_PROVIDER: "groq",
     });
@@ -826,5 +864,99 @@ describe("Express API Integration & Security Tests", () => {
       .send(payload);
     expect(failClosedRes.status).toBe(503);
     expect(failClosedRes.body.code).toBe("RATE_LIMIT_STORE_UNAVAILABLE");
+  });
+
+  it("defeats X-Forwarded-For left-most spoofing under trust proxy=1 and fails closed across Redis timeout/malformed/command failures", async () => {
+    const sharedStore = new MemoryRateLimitStore();
+    const proxyApp = createApp({
+      config: { ...BASE_CONFIG, geminiApiKey: "k" },
+      geminiClient: {
+        models: {
+          generateContent: async () => ({
+            text: JSON.stringify(VALID_GUIDANCE_SAMPLE),
+          }),
+        },
+      },
+      fetchImpl: createEnvMockFetch(),
+      enableRateLimit: true,
+      rateLimitMax: 1,
+      rateLimitStore: sharedStore,
+    });
+
+    const payload = {
+      location: { city: "Chennai", latitude: 13.08, longitude: 80.27 },
+      household: { profileId: "general" },
+    };
+
+    // Attacker spoofs left-most client IP while proxy appends actual client IP 203.0.113.55
+    const r1 = await request(proxyApp)
+      .post("/api/gemini/guidance")
+      .set("X-Forwarded-For", "9.9.9.9, 203.0.113.55")
+      .send(payload);
+    const r2 = await request(proxyApp)
+      .post("/api/gemini/guidance")
+      .set("X-Forwarded-For", "8.8.4.4, 203.0.113.55")
+      .send(payload);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(429);
+
+    // 1. Timeout aborts cleanly and fails closed
+    const timeoutStore = new RedisRestRateLimitStore({
+      restUrl: "https://redis.invalid",
+      restToken: "tok",
+      timeoutMs: 15,
+      fetchImpl: (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    });
+    timeoutStore.init({ windowMs: 60_000 } as never);
+    await expect(timeoutStore.increment("k")).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailableError
+    );
+    await expect(timeoutStore.decrement("k")).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailableError
+    );
+    await expect(timeoutStore.resetKey("k")).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailableError
+    );
+
+    // 2. Malformed JSON, command error, invalid counter, or invalid PTTL fail closed
+    const malformedJsonStore = new RedisRestRateLimitStore({
+      restUrl: "https://redis.invalid",
+      restToken: "tok",
+      fetchImpl: async () => new Response("not-json", { status: 200 }),
+    });
+    await expect(malformedJsonStore.increment("k")).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailableError
+    );
+
+    const commandErrStore = new RedisRestRateLimitStore({
+      restUrl: "https://redis.invalid",
+      restToken: "tok",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify([{ result: 1 }, { error: "ERR syntax" }, { result: 1000 }]),
+          { status: 200 }
+        ),
+    });
+    await expect(commandErrStore.increment("k")).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailableError
+    );
+
+    const badTtlStore = new RedisRestRateLimitStore({
+      restUrl: "https://redis.invalid",
+      restToken: "tok",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify([{ result: 1 }, { result: 1 }, { result: "NaN" }]),
+          { status: 200 }
+        ),
+    });
+    await expect(badTtlStore.increment("k")).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailableError
+    );
   });
 });

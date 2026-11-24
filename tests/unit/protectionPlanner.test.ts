@@ -71,6 +71,28 @@ describe("Personalized Daily Protection Planner", () => {
     expect(plan.riskTier).toBe("Unknown");
     expect(plan.maskRecommended).toBe(true);
     expect(plan.maskNote).toContain("Air-quality data is currently unavailable");
-    expect(plan.ventilationWindowNote).toContain("Air-quality data is currently unavailable");
+    expect(plan.ventilationWindowNote).toContain(
+      "Air-quality data is currently unavailable"
+    );
+    const fullText = JSON.stringify(plan);
+    expect(fullText).not.toContain("12:30 – 15:30");
+    expect(fullText).not.toMatch(/midday hours/i);
+  });
+
+  it("cites O3/NO2 and regional forecast uncertainty around forecast low-PM2.5 ventilation windows without hardcoding midday schedules", () => {
+    const calmLowPlan = buildDailyProtectionPlan({
+      aqi: 40,
+      category: "Good",
+      pm25: 15,
+      windKmh: 5,
+      bestWindowLabel: "14:00–16:00 IST",
+      household: { ...BASE_HOUSEHOLD, profileId: "general" },
+    });
+    expect(calmLowPlan.ventilationWindowNote).not.toMatch(/midday hours/i);
+    const ventStep = calmLowPlan.steps.find(
+      (s) => s.id === "ventilation-window"
+    );
+    expect(ventStep?.title).toContain("O3/NO2");
+    expect(ventStep?.rationale).toContain("model forecasts carry local grid uncertainty");
   });
 });

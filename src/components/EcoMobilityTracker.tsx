@@ -66,7 +66,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
   ]);
 
   const handleSave = async () => {
-    if (!impact || !isSignedIn) return;
+    if (!impact || impact.emissionsAvoidedKg === null || !isSignedIn) return;
     setSaving(true);
     setSaveFeedback(null);
     try {
@@ -106,7 +106,12 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
 
         <button
           type="button"
-          disabled={!isSignedIn || !impact || saving}
+          disabled={
+            !isSignedIn ||
+            !impact ||
+            impact.emissionsAvoidedKg === null ||
+            saving
+          }
           onClick={handleSave}
           className="px-3.5 py-2 text-xs font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
@@ -263,16 +268,22 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
               <p className="text-xs text-slate-500">
                 Estimated {impact.emissionsAvoidedMetricLabel} Avoided
               </p>
-              <p
-                className={`text-3xl font-mono font-bold tabular-nums mt-1 ${
-                  impact.emissionsAvoidedKg >= 0
-                    ? "text-emerald-700"
-                    : "text-amber-700"
-                }`}
-              >
-                {impact.emissionsAvoidedKg}{" "}
-                <span className="text-xs font-normal text-slate-500">kg</span>
-              </p>
+              {impact.emissionsAvoidedKg !== null ? (
+                <p
+                  className={`text-3xl font-mono font-bold tabular-nums mt-1 ${
+                    impact.emissionsAvoidedKg >= 0
+                      ? "text-emerald-700"
+                      : "text-amber-700"
+                  }`}
+                >
+                  {impact.emissionsAvoidedKg}{" "}
+                  <span className="text-xs font-normal text-slate-500">kg</span>
+                </p>
+              ) : (
+                <p className="text-sm font-semibold text-amber-800 mt-2">
+                  Not subtracted (incompatible scopes)
+                </p>
+              )}
               <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
                 {impact.totalDistanceKm} km total
               </p>
@@ -328,7 +339,21 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                 {impact.originalFactor.publicationYear})
               </p>
               <p>Scope: {impact.originalFactor.pollutantScope}</p>
-              <p>Source: {impact.originalFactor.source}</p>
+              <p>
+                Source: {impact.originalFactor.source} (
+                {impact.originalFactor.pageOrTableRef})
+              </p>
+              <p>
+                Reference:{" "}
+                <a
+                  href={impact.originalFactor.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-teal-700 underline break-all"
+                >
+                  {impact.originalFactor.sourceUrl}
+                </a>
+              </p>
               <p>Units: {impact.originalFactor.units}</p>
               <p>Region: {impact.originalFactor.geographicRelevance}</p>
               <p>Limitations: {impact.originalFactor.limitations}</p>
@@ -340,7 +365,21 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                 {impact.alternativeFactor.publicationYear})
               </p>
               <p>Scope: {impact.alternativeFactor.pollutantScope}</p>
-              <p>Source: {impact.alternativeFactor.source}</p>
+              <p>
+                Source: {impact.alternativeFactor.source} (
+                {impact.alternativeFactor.pageOrTableRef})
+              </p>
+              <p>
+                Reference:{" "}
+                <a
+                  href={impact.alternativeFactor.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-teal-700 underline break-all"
+                >
+                  {impact.alternativeFactor.sourceUrl}
+                </a>
+              </p>
               <p>Units: {impact.alternativeFactor.units}</p>
               <p>Region: {impact.alternativeFactor.geographicRelevance}</p>
               <p>Limitations: {impact.alternativeFactor.limitations}</p>
@@ -349,7 +388,9 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
 
           <div className="space-y-1 text-xs text-slate-600">
             {impact.scopeWarning && (
-              <p className="text-amber-800 font-medium">{impact.scopeWarning}</p>
+              <p className="text-amber-800 font-medium">
+                {impact.scopeWarning}
+              </p>
             )}
             <p>{impact.personalExposureDistinction}</p>
             <p>{impact.communityImpactDistinction}</p>

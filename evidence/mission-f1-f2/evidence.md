@@ -1,80 +1,55 @@
-# BreatheWise — Mission F1 & F2 Evaluation Evidence Record
+# BreatheWise — Mission F1 & F2 Independent Verification Evidence
 
-Timestamp: 2026-11-24T05:50:00Z
-Repository: BreatheWise (Public, main branch)
-Firebase Project: `data-blend-vc62s` / `ai-studio-breathewise-0d124cc1-42ec-406c-8f70-0818ae6bbdeb`
+Date: 2026-11-24
+Workspace Branch Policy: Single working codebase (non-git extracted archive; no new branches created)
+Firebase Project: `data-blend-vc62s` / Database: `ai-studio-breathewise-0d124cc1-42ec-406c-8f70-0818ae6bbdeb`
 
----
-
-## 1. F1 Security & Data Integrity Remediation Status
-
-1. **Server-Verified Environmental Context**:
-   - Implemented in `server/services/verifiedAirContextBuilder.ts`.
-   - Client submission of forged AQI, fake station IDs, or manufactured measured availability flags is completely ignored and overwritten by server-side CPCB and Open-Meteo providers.
-   - Station selection does not accept the first station blindly: prioritizes calculable CPCB AQI, freshness, Haversine geographic proximity to the user's validated coordinates, age, and pollutant count.
-   - Adversarial tests confirm injected AQI values have zero influence on AI guidance or Q&A responses.
-
-2. **AI Provider & Fallback Configuration**:
-   - Configured `AI_PROVIDER=gemini` and `AI_FALLBACK_PROVIDER=groq` in `server/config.ts`.
-   - Fallback is strictly restricted to defined provider availability failures: HTTP 429, 503, timeouts, and network failures. Configuration errors and validation failures are not masked.
-   - Both providers use identical normalized Zod-validated response schemas (`GuidanceResponseSchema` and `AskResponseSchema`).
-
-3. **CORS, Proxy IP & Fail-Closed Distributed Rate Limiting**:
-   - Exact origin allowlist enforced (`allowedOrigins`); wildcard Cloud Run regexes removed from `server/app.ts`.
-   - `app.set("trust proxy", 1)` and `req.ip || req.socket.remoteAddress || "unknown"` ensure rate limit keys reflect the real client IP from `X-Forwarded-For` rather than the proxy socket IP.
-   - `RedisRestRateLimitStore` uses unshared `bw:dist:api:` / `bw:dist:ai:` prefixes, removes any silent memory fallback, and fails closed with HTTP `503` (`RATE_LIMIT_STORE_UNAVAILABLE`) when Redis is unreachable or errors.
-
-4. **Prompt-Injection Protection**:
-   - Trusted system instructions strictly separated from untrusted user queries using cryptographic boundary nonces and control-character filtering in `server/services/aiContext.ts`.
-
-5. **Community Report Privacy**:
-   - Public `/smogReports/{reportId}` documents omit `authorUid` and email PII. Ownership isolated to `/smogReports/{reportId}/private/owner`.
-   - Concurrency-safe Firestore transactions (`runTransaction`) manage atomic report confirmations.
-
-6. **Image Security**:
-   - Sharp binary decoding/re-encoding (`server/utils/imageSanitizer.ts`) enforces MIME type validation, max dimensions (4096px), pixel bombs (16 MP), animated image rejection, polyglot checks, EXIF/GPS metadata stripping, and WebP thumbnail conversion (< 56 KB).
-   - `sharp: "^0.33.5"` explicitly declared in `package.json` and resolved in `bun.lock`.
-
-7. **Authentication & Error Privacy**:
-   - Strict identity checks: `decoded && decoded.email_verified === true` enforced in both middleware and photo upload handler. Missing `email_verified` is treated as false.
-   - Operational logs sanitized to redact email addresses, UIDs, and tenant tokens.
+Status Legend (strictly bounded):
+- `IMPLEMENTED`: Source code implemented and audited in workspace
+- `TESTED`: Verified by automated unit, integration, or UI tests
+- `LIVE-VERIFIED`: Verified against running local/upstream service or headless Chromium
+- `NOT RUN`: Command or tool unavailable in container (reason noted)
+- `BLOCKED`: External upstream endpoint unreachable or temporarily unavailable in sandbox
+- `NOT VERIFIED`: Condition not verified live
 
 ---
 
-## 2. F2 Scientific Accuracy & Environmental Intelligence Status
+## 1. Mission F1 — Security & Data Integrity Status
 
-8. **Indian National AQI Engine & CPCB Observation Completeness**:
-   - Official CPCB methodology (`src/domain/indianAqi.ts`) enforces exact breakpoints, 24h/8h averaging periods, minimum 3 valid pollutants including PM2.5 or PM10, and **mandatory** `sampleHoursCount` (`>= 16h` of 24h or `>= 6h` of 8h)—never bypassing observation checks when `sampleHoursCount` is omitted.
-   - `cpcbProvider.ts` parses `sample_hours` / `valid_hours` / `observation_hours` and sets `isAveragedPeriodValid` to `true` only when physical plausibility, `min <= avg <= max`, valid timestamp, and verified observation count all hold.
-
-9. **CPCB Station Selection, Freshness & Pagination Rejection**:
-   - `verifiedAirContextBuilder.ts` restricts eligible stations strictly to `!s.stale && s.indianAqi.calculable && s.indianAqi.aqi !== null`—even when `preferredStationName` is provided—and ranks eligible stations by Haversine distance, age, and pollutant coverage.
-   - When `cpcb.isPaginationComplete === false` (upstream HTTP/parse failure or `totalRecordsReported` truncation), `verifiedAirContextBuilder.ts` withholds measured AQI claims (`measuredSourceAvailable: false`) and reports explicit limitation reasons.
-
-10. **CPCB Pagination & Total Count Tracking**:
-    - Offset/limit pagination loop (`maxOffset = 2500`) in `cpcbProvider.ts` tracks HTTP failures (`paginationFailed`), `total` records reported from data.gov.in, and `isPaginationComplete`.
-
-11. **Open-Meteo Forecast Continuity, Rolling Windows & Timestamp Alignment**:
-    - Strict Zod `.superRefine` rejects duplicate timestamps, non-chronological hours, mismatched array lengths, and gaps (`Hourly timestamps must be exactly 1 hour apart`).
-    - Rolling 24h/8h averages use `computeTimeBoundedRollingAverage`, strictly bounding samples by timestamp `[endMs - (windowHours - 1) * 3_600_000, endMs]`.
-    - Weather series (`wind_speed_10m`, `boundary_layer_height`) are matched to air-quality timestamps via `weatherByTime` `Map` lookup rather than raw array index.
-
-12. **CO2 vs CO2e Accounting & Predefined Routine Savings**:
-    - `ecoImpact.ts` explicitly separates `ghgMetric` (`"CO2"` vs `"CO2e"` vs `"ZERO"`), keeping CO2-only factors (`city_bus_diesel` `0.015161 kg CO2/p-km`, `metro_rail`, `car_ev`, `city_bus_electric`) labeled accurately as `CO2` and flagging mixed-scope comparisons with `CO2 / CO2e (mixed scope)` and `scopeWarning`.
-    - Removed arbitrary predefined savings (`2.1 kg`, `1.4 kg`, `0.4 kg`, `1.8 kg`) from `defaultRoutines.ts`; routines initialize to `0.0`.
-
-13. **Emission Factor Traceability**:
-    - Every factor in `EMISSION_FACTORS_INDIA` (`ecoImpact.ts`) includes direct source URLs, publishers (WRI India, CEA, IPCC, DMRC, ARAI), publication years, page/table references, pollutant scope, calculation methods, and limitations.
-
-14. **Indoor Air Quality Science**:
-    - Volume ($L \times W \times H$), required CADR, effective ACH, and CFM / $\text{m}^3\text{/h}$ conversions validated in `src/domain/indoorAir.ts`.
-    - `IndoorAirCoach.tsx` accurately distinguishes portable HEPA 3–6 ACH particulate decay sizing benchmarks during smog episodes from ASHRAE 62.2 minimum outdoor-air ventilation rates and CDC/NIOSH infectious-aerosol dilution targets, notes HEPA limits against gaseous VOCs/CO (requiring activated carbon), and warns against ozone-generating cleaners.
+| Item | Summary & Files | Status |
+|---|---|---|
+| F1.1 Production Distributed Rate Limiting | `loadServerConfig` (`server/config.ts`) and `createRateLimitStore` (`server/utils/rateLimitStore.ts`) require `RATE_LIMIT_REDIS_REST_URL` and `RATE_LIMIT_REDIS_REST_TOKEN` in `NODE_ENV=production` and throw at startup if absent. `RedisRestRateLimitStore` uses `AbortController` timeouts (`finally { clearTimeout(timer); }`), validates pipeline arrays, per-command `error` fields, counters, and TTLs, and converts all errors across `increment`, `decrement`, and `resetKey` to `DistributedRateLimitUnavailableError` -> HTTP `503` (`RATE_LIMIT_STORE_UNAVAILABLE`). `app.set("trust proxy", 1)` + `req.ip` defeat left-most `X-Forwarded-For` spoofing; `bw:dist:api:` and `bw:dist:ai:` prefixes isolate buckets. | `IMPLEMENTED`, `TESTED` |
+| F1.2 Lockfile & `.gitignore` Hygiene | `package.json` and `bun.lock` declare matching `sharp@^0.33.5` and `typescript@^5.9.3`. Verified via `bun install --frozen-lockfile` (Bun v1.4.4, 551 installs checked, exit 0). `.gitignore` updated to exclude `node_modules/`, `dist/`, `.vite/`, `.env*` (keeping `!.env.example`), `*service-account*.json`, `.firebase/`, `emulator-data/`, `firebase-export-*`, logs, `.playwright-cli/`, and `coverage/`. | `IMPLEMENTED`, `TESTED`, `LIVE-VERIFIED` |
+| F1.3 Gemini Model Configuration & Orchestration | `.env.example` and `server/config.ts` default `GEMINI_MODEL=gemini-4-hydrogen` and reject explicitly blank `GEMINI_MODEL` / `GROQ_MODEL` in production. Active container runtime injects `GEMINI_MODEL=gemini-3.8-flash` and `GROQ_MODEL=openai/gpt-oss-20b` (observed on live `/api/health`). On live `POST /api/gemini/guidance`, primary Gemini (`gemini-3.8-flash`) returned upstream `HTTP 503 UNAVAILABLE` and cleanly triggered live fallback to Groq (`openai/gpt-oss-20b`). | `IMPLEMENTED`, `TESTED`, `LIVE-VERIFIED` (Health & Groq Fallback) / `BLOCKED` (Live Gemini 503) |
+| Server-Verified Air Context & Injection Defense | `server/services/verifiedAirContextBuilder.ts` ignores forged client AQI/station payloads; `server/services/aiContext.ts` isolates untrusted user text with cryptographic nonces and URL/tag stripping identically across Gemini and Groq. | `IMPLEMENTED`, `TESTED` |
+| Community PII Isolation, Atomic Confirmations, Image Sanitizer & Email Verification | `firestore.rules`, `src/firebase/firestoreService.ts`, `server/utils/imageSanitizer.ts` (`sharp` decode -> WebP EXIF strip), and `server/app.ts` (`email_verified === true`) enforce strict authorization and privacy boundaries. | `IMPLEMENTED`, `TESTED` |
 
 ---
 
-## 3. Verification & Test Results
+## 2. Mission F2 — Scientific Accuracy & Environmental Intelligence Status
 
-- **Vitest Unit & Integration Tests (`npm test`)**: **62/62 tests passed** across all 8 test files (`tests/unit/*`, `tests/ui/components.test.tsx`, `tests/integration/api.test.ts`).
-- **Node 22 Pure Logic Tests (`npx --yes tsx --test src/domain/pureLogic.node-test.ts`)**: **1/1 passed**.
-- **TypeScript Typecheck & ESLint (`npm run lint`)**: **Pass** (`tsc --noEmit && eslint .`, `0` errors).
-- **Production Build (`npm run build`)**: **Pass** (`vite build` completed successfully).
+| Item | Summary & Files | Status |
+|---|---|---|
+| F2.1–F2.3 CPCB 16-Hour Rule, Units & OpenAQ v3 Hourly Integration | `src/domain/indianAqi.ts` enforces `>= 16` hourly observations for all criteria pollutants (24h means and 24h max-8h rolling averages via `computeMax8HourRollingAverageOver24Hours` for CO and O3), rejects missing `sampleHoursCount`, and marks future timestamps (`> maxFutureSkewMinutes`) stale. `server/providers/openAqProvider.ts` queries OpenAQ v3 `/v3/locations` and `/v3/sensors/{id}/hours` to compute real hourly Indian AQI (`OPENAQ_API_KEY` not set in container -> live OpenAQ `NOT VERIFIED`). `server/providers/cpcbProvider.ts` normalizes explicit `pollutant_unit` values, rejects missing/unknown units, and enforces per-record freshness & `<= 60 min` cross-pollutant alignment. Live CPCB (`api.data.gov.in`) returned `ECONNREFUSED` in sandbox. | `IMPLEMENTED`, `TESTED` / Live Upstreams: CPCB `BLOCKED`, OpenAQ `NOT RUN` (no key configured) |
+| F2.4 CPCB Pagination Integrity | `server/providers/cpcbProvider.ts` deduplicates records across paginated pages using `(state, city, station, pollutant_id, last_update)`, frees fetch timers in `finally`, and sets `isPaginationComplete = false` on failed pages, unique-record shortfalls vs `total`, or `maxOffset` (`2500`) truncation when `total` is omitted. | `IMPLEMENTED`, `TESTED` |
+| F2.5 Open-Meteo Validation & Protection Planner | `server/providers/openMeteoProvider.ts` enforces strictly increasing 1h timestamps, aligned `current.time` (no index-24 fallback), `current.time` staleness rejection in `verifiedAirContextBuilder.ts`, and `>= 16h` rolling bounds without backfilling gaps. `src/domain/protectionPlanner.ts` removes hardcoded `"12:30 – 15:30"` and unconditional `"midday hours"` wording and cites O3/NO2 + model uncertainty caveats. | `IMPLEMENTED`, `TESTED`, `LIVE-VERIFIED` |
+| F2.6 Emission Factor Traceability, CO2 Scope & CEA v22.0 | `src/domain/ecoImpact.ts` uses WRI India 2015 CO2 factors (`auto_cng = 0.10768`, `suburban_rail = 0.007976`, `city_bus_diesel = 0.015161`) and CEA CO2 Baseline Database v22.0 (`0.675 kg CO2/kWh`: `car_ev = 0.108`, `city_bus_electric = 0.017`, `metro_rail = 0.023`), all typed `ghgMetric: "CO2"` with `sourceUrl`, `publisher`, `publicationYear`, and `pageOrTableRef`. `calculateEcoImpact` refuses to subtract incompatible `CO2` vs `CO2e` scopes (`emissionsAvoidedKg: null`, `isScopeIncompatible: true`), rendered safely in `src/components/EcoMobilityTracker.tsx` with clickable source links. | `IMPLEMENTED`, `TESTED`, `LIVE-VERIFIED` |
+| F2.7 Indoor Air Science & Safe Ventilation | `src/components/IndoorAirCoach.tsx` details HEPA `>= 99.97%` @ `0.3 um` particulate-only limits, activated carbon dependence on sorbent medium/bed mass/capacity, inability of ordinary carbon filters to reliably remove CO, certified CO alarms and vented combustion-source safety, real-world factors (purifier performance, room air leakage, unit placement, filter condition, room air mixing), illustrative 3–6 ACH sizing benchmarks without CDC/NIOSH/ASHRAE rule attribution, and condition-based ventilation without `"midday convective mixing"`. | `IMPLEMENTED`, `TESTED`, `LIVE-VERIFIED` |
+
+---
+
+## 3. Executed Verification Commands & Observed Results
+
+| Check | Command | Outcome | Notes |
+|---|---|---|---|
+| Frozen Lockfile Parity | `bun install --frozen-lockfile` | **Passed** | Bun v1.4.4 (`Checked 551 installs across 630 packages (no changes)`). |
+| Unit, UI & Integration Tests | `bun run test` | **72/72 Passed** | 8 Vitest test files (`vitest v5.1.1`). |
+| Node Pure Logic Test | `npx --yes tsx --test src/domain/pureLogic.node-test.ts` | **1/1 Passed** | Independent Node `node:test` verification of AQI, Indoor ACH, and Eco Impact. |
+| TypeScript & ESLint | `tsc --noEmit && eslint .` | **Passed** | 0 errors across client, server, and Firestore rules ESLint config. |
+| Formatter Check | `bun run format:check` | **Passed** | Prettier clean across all TS/TSX files. |
+| Production Build | `bun run build` | **Passed** | `vite build` clean in `1.10s`. |
+| Bundle Size Check | `du -sh --exclude=node_modules --exclude=dist .` | **3.3 MB** | Well below 10 MB competition threshold. |
+| Dependency Security Audit | `bun audit` | **Completed (5 findings)** | `sharp@0.33.5` pinned per lockfile parity requirement; nested `@grpc/grpc-js` via Firebase SDKs. |
+| Live Local Server & Browser UI | `curl /api/health`, `/api/air-quality`, `/api/gemini/guidance` & `playwright-cli` (`1440x900`) | **LIVE-VERIFIED (0 console errors)** | Open-Meteo `LIVE-VERIFIED` (`AQI 68`/`126`); CPCB `BLOCKED` (`ECONNREFUSED`); Gemini `503` triggered live Groq fallback (`openai/gpt-oss-20b`); DOM confirmed updated IndoorAirCoach, EcoMobilityTracker links, and no CDC/ASHRAE/midday text. |
+| Test Coverage Report | `npx --no vitest run --coverage` | `NOT RUN` | `@vitest/coverage-v8` dependency is not installed in workspace. |
+| Firebase Emulator Suite | `which firebase` / `test -f firebase.json` | `NOT RUN` | `firebase` CLI and `firebase.json` are absent from container; rules linted with `@firebase/eslint-plugin-security-rules`. |

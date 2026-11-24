@@ -194,6 +194,18 @@ describe("BreatheWise UI Components & Accessibility", () => {
       screen.getByText(/does not measure or predict actual indoor PM2.5/i)
     ).toBeInTheDocument();
 
+    const text = container.textContent ?? "";
+    expect(text).toContain("sorbent medium, bed mass, and remaining capacity");
+    expect(text).toContain("do NOT reliably remove carbon monoxide (CO)");
+    expect(text).toContain("certified CO alarms");
+    expect(text).toContain(
+      "purifier performance, room air leakage, unit placement, filter condition, and room air mixing"
+    );
+    expect(text).toContain("illustrative purifier-sizing benchmarks");
+    expect(text).not.toContain("CDC/NIOSH");
+    expect(text).not.toContain("ASHRAE 62.2");
+    expect(text).not.toContain("midday convective mixing");
+
     const results = await axe.run(container, {
       rules: { "color-contrast": { enabled: false } },
     });
@@ -227,6 +239,12 @@ describe("BreatheWise UI Components & Accessibility", () => {
     );
 
     expect(screen.getByText(/India GHG Program/i)).toBeInTheDocument();
+    expect(screen.getByText(/Table 4\.2/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: /cea\.nic\.in\/cdm-co2-baseline-view/i,
+      })
+    ).toHaveAttribute("href", "https://cea.nic.in/cdm-co2-baseline-view/");
     const firstRoutineBtn = screen.getByRole("button", {
       name: new RegExp(DEFAULT_CLEAN_AIR_ROUTINES[0].title, "i"),
     });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   calculateIndianAqi,
+  computeMax8HourRollingAverageOver24Hours,
   computeTimeBoundedRollingAverage,
   isDataStale,
   type IndianAqiResult,
@@ -208,13 +209,14 @@ export interface OpenMeteoForecastResult {
 const openMeteoCache = new TtlCache<OpenMeteoForecastResult>(15 * 60 * 1000);
 
 function findCurrentHourIndex(times: string[], currentTime?: string): number {
-  if (!times.length) return -1;
-  if (currentTime) {
-    const prefix = currentTime.slice(0, 13);
-    const idx = times.findIndex((t) => t.startsWith(prefix));
-    if (idx !== -1) return idx;
-  }
-  return Math.min(times.length - 1, 24);
+  if (!times.length || !currentTime) return -1;
+  const prefix = currentTime.slice(0, 13);
+  return times.findIndex((t) => t.startsWith(prefix));
+}
+
+function normalizeOpenMeteoIstTimestamp(ts: string): string {
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(ts)) return ts;
+  return ts.length === 16 ? `${ts}:00+05:30` : `${ts}+05:30`;
 }
 
 export async function fetchOpenMeteoForecast(params: {
@@ -285,15 +287,20 @@ export async function fetchOpenMeteoForecast(params: {
     const aq = aqParsed.data;
     const times = aq.hourly?.time ?? [];
     const curIdx = findCurrentHourIndex(times, aq.current?.time);
-    const refTimeIso = curIdx >= 0 ? times[curIdx] : (times[times.length - 1] ?? "");
+    if (curIdx === -1) {
+      throw new Error(
+        "Open-Meteo current.time is missing or not aligned with the hourly time series."
+      );
+    }
+    const refTimeIso = normalizeOpenMeteoIstTimestamp(times[curIdx]);
 
     const buildTimedSamples = (arr?: (number | null)[]) =>
       times.map((timeIso, idx) => ({
-        timeIso,
+        timeIso: normalizeOpenMeteoIstTimestamp(timeIso),
         value: arr?.[idx] ?? null,
       }));
 
-    // Time-bounded rolling averages strictly within 24h / 8h of reference hour
+    // Time-bounded rolling averages strictly within 24h of reference hour (CPCB >= 16h rule)
     const pm25Roll = computeTimeBoundedRollingAverage(
       buildTimedSamples(aq.hourly?.pm2_5),
       refTimeIso,
@@ -314,15 +321,13 @@ export async function fetchOpenMeteoForecast(params: {
       refTimeIso,
       24
     );
-    const o3Roll = computeTimeBoundedRollingAverage(
+    const o3Roll = computeMax8HourRollingAverageOver24Hours(
       buildTimedSamples(aq.hourly?.ozone),
-      refTimeIso,
-      8
+      refTimeIso
     );
-    const coRoll = computeTimeBoundedRollingAverage(
+    const coRoll = computeMax8HourRollingAverageOver24Hours(
       buildTimedSamples(aq.hourly?.carbon_monoxide),
-      refTimeIso,
-      8
+      refTimeIso
     );
 
     const aqiInputs: PollutantConcentrationInput[] = [];
@@ -400,7 +405,7 @@ export async function fetchOpenMeteoForecast(params: {
     }
 
     // Build next 24h forecast window series
-    const startIdx = Math.max(0, curIdx >= 0 ? curIdx - 6 : 0);
+    const startIdx = Math.max(0, curIdx - 6);
     const endIdx = Math.min(times.length, startIdx + 24);
     const hourlySeries: ModelledHourlyPoint[] = [];
 
@@ -432,11 +437,16 @@ export async function fetchOpenMeteoForecast(params: {
       let bestIdx = -1;
       let bestVal = Infinity;
       for (let i = 0; i < futurePoints.length - 1; i += 1) {
-        const t1 = new Date(futurePoints[i].timeIso).getTime();
-        const t2 = new Date(futurePoints[i + 1].timeIso).getTime();
+        const t1 = new Date(
+          normalizeOpenMeteoIstTimestamp(futurePoints[i].timeIso)
+        ).getTime();
+        const t2 = new Date(
+          normalizeOpenMeteoIstTimestamp(futurePoints[i + 1].timeIso)
+        ).getTime();
         if (t2 - t1 === 3600000) {
           const avg2h =
-            ((futurePoints[i].pm25 ?? 999) + (futurePoints[i + 1].pm25 ?? 999)) /
+            ((futurePoints[i].pm25 ?? 999) +
+              (futurePoints[i + 1].pm25 ?? 999)) /
             2;
           if (avg2h < bestVal) {
             bestVal = avg2h;
@@ -450,16 +460,16 @@ export async function fetchOpenMeteoForecast(params: {
     }
 
     const currentTimeIso = aq.current?.time
-      ? `${aq.current.time}:00+05:30`
+      ? normalizeOpenMeteoIstTimestamp(aq.current.time)
       : null;
     const staleInfo = currentTimeIso
-      ? isDataStale(currentTimeIso, new Date(), 180)
-      : { stale: false, ageMinutes: null };
+      ? isDataStale(currentTimeIso, new Date(), 180, 60)
+      : { stale: true, ageMinutes: null };
 
-    const curBlh =
-      refTimeIso
-        ? (weatherByTime.get(refTimeIso)?.boundaryLayerHeightM ?? null)
-        : null;
+    const curRawTime = times[curIdx];
+    const curBlh = curRawTime
+      ? (weatherByTime.get(curRawTime)?.boundaryLayerHeightM ?? null)
+      : null;
 
     const result: OpenMeteoForecastResult = {
       status: "available",

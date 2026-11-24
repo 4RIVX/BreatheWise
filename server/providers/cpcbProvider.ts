@@ -4,6 +4,7 @@ import {
   getExpectedAveragingPeriod,
   getRequiredMinimumHours,
   isDataStale,
+  normalizePollutantConcentration,
   type IndianAqiResult,
   type PollutantCode,
   type PollutantConcentrationInput,
@@ -42,6 +43,8 @@ export const CpcbApiResponseSchema = z.object({
   records: z.array(CpcbRecordSchema).default([]),
 });
 
+export type NormalizedPollutantUnit = "ug/m3" | "mg/m3" | "ppb" | "ppm";
+
 export interface CpcbPollutantReading {
   code: PollutantCode;
   rawId: string;
@@ -50,7 +53,14 @@ export interface CpcbPollutantReading {
   max: number | null;
   sampleHoursCount: number | null;
   unit: string;
+  parsedUnit: NormalizedPollutantUnit | null;
+  lastUpdatedRaw: string | null;
+  lastUpdatedIso: string | null;
 }
+
+export type StationSourceLabel =
+  | "CPCB / data.gov.in Official Monitoring Station"
+  | "CPCB / OpenAQ v3 Hourly Monitoring Station";
 
 export interface CpcbStationMeasurement {
   stationName: string;
@@ -64,7 +74,7 @@ export interface CpcbStationMeasurement {
   ageMinutes: number | null;
   pollutants: CpcbPollutantReading[];
   indianAqi: IndianAqiResult;
-  sourceLabel: "CPCB / data.gov.in Official Monitoring Station";
+  sourceLabel: StationSourceLabel;
   isMeasured: true;
 }
 
@@ -127,6 +137,29 @@ export function parseCpcbTimestamp(raw?: string): string | null {
   return null;
 }
 
+export function parseCpcbUnit(
+  raw?: string | null
+): NormalizedPollutantUnit | null {
+  if (!raw) return null;
+  const compact = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/³|\^3/g, "3");
+  if (
+    compact === "ug/m3" ||
+    compact === "µg/m3" ||
+    compact === "μg/m3" ||
+    compact === "mcg/m3"
+  ) {
+    return "ug/m3";
+  }
+  if (compact === "mg/m3") return "mg/m3";
+  if (compact === "ppb") return "ppb";
+  if (compact === "ppm") return "ppm";
+  return null;
+}
+
 export function normalizeCpcbRecords(
   records: z.infer<typeof CpcbRecordSchema>[],
   now: Date = new Date()
@@ -155,21 +188,30 @@ export function normalizeCpcbRecords(
     const code = mapCpcbPollutantId(rawPollutant);
     if (!code) continue;
 
+    const recRawTs = rec.last_update?.trim() ?? null;
+    const recIsoTs = parseCpcbTimestamp(rec.last_update);
+
     const key = `${state}::${city}::${stationName}`;
     let entry = stationMap.get(key);
     if (!entry) {
-      const iso = parseCpcbTimestamp(rec.last_update);
       entry = {
         stationName,
         city,
         state,
         latitude: parseNumericField(rec.latitude),
         longitude: parseNumericField(rec.longitude),
-        lastUpdatedRaw: rec.last_update?.trim() ?? null,
-        lastUpdatedIso: iso,
+        lastUpdatedRaw: recRawTs,
+        lastUpdatedIso: recIsoTs,
         pollutants: [],
       };
       stationMap.set(key, entry);
+    } else {
+      if (entry.latitude === null) {
+        entry.latitude = parseNumericField(rec.latitude);
+      }
+      if (entry.longitude === null) {
+        entry.longitude = parseNumericField(rec.longitude);
+      }
     }
 
     const avg = parseNumericField(rec.pollutant_avg);
@@ -178,8 +220,8 @@ export function normalizeCpcbRecords(
     const sampleHoursCount = parseNumericField(
       rec.sample_hours ?? rec.valid_hours ?? rec.observation_hours
     );
-    const unit =
-      rec.pollutant_unit?.trim() || (code === "CO" ? "mg/m3" : "ug/m3");
+    const parsedUnit = parseCpcbUnit(rec.pollutant_unit);
+    const unit = rec.pollutant_unit?.trim() || "unspecified";
 
     entry.pollutants.push({
       code,
@@ -189,30 +231,83 @@ export function normalizeCpcbRecords(
       max,
       sampleHoursCount,
       unit,
+      parsedUnit,
+      lastUpdatedRaw: recRawTs,
+      lastUpdatedIso: recIsoTs,
     });
   }
 
   const stations: CpcbStationMeasurement[] = [];
   for (const entry of stationMap.values()) {
-    const aqiInputs: PollutantConcentrationInput[] = [];
-    const staleInfo = entry.lastUpdatedIso
-      ? isDataStale(entry.lastUpdatedIso, now, 180)
+    // Determine station reference timestamp strictly from fresh/non-future pollutant timestamps
+    let latestValidMs = -Infinity;
+    let latestValidIso: string | null = null;
+    let latestValidRaw: string | null = null;
+    for (const p of entry.pollutants) {
+      if (!p.lastUpdatedIso) continue;
+      const ms = new Date(p.lastUpdatedIso).getTime();
+      if (Number.isNaN(ms)) continue;
+      const check = isDataStale(p.lastUpdatedIso, now, 180, 5);
+      if (check.isFuture) continue;
+      if (ms > latestValidMs) {
+        latestValidMs = ms;
+        latestValidIso = p.lastUpdatedIso;
+        latestValidRaw = p.lastUpdatedRaw;
+      }
+    }
+
+    const stationUpdatedIso = latestValidIso ?? entry.lastUpdatedIso;
+    const stationUpdatedRaw = latestValidRaw ?? entry.lastUpdatedRaw;
+    const staleInfo = stationUpdatedIso
+      ? isDataStale(stationUpdatedIso, now, 180, 5)
       : { stale: true, ageMinutes: null };
 
+    const aqiInputs: PollutantConcentrationInput[] = [];
     for (const p of entry.pollutants) {
-      if (p.avg === null || p.avg < 0) continue;
-      const normalizedUnit = p.code === "CO" ? "mg/m3" : "ug/m3";
+      if (p.avg === null || !Number.isFinite(p.avg) || p.avg < 0) continue;
+      if (!p.parsedUnit) {
+        // Explicit unit missing or unrecognized — reject rather than guessing mg/m3 vs ug/m3
+        continue;
+      }
+
+      let normalizedConc: { value: number; unit: "ug/m3" | "mg/m3" };
+      try {
+        normalizedConc = normalizePollutantConcentration(
+          p.code,
+          p.avg,
+          p.parsedUnit
+        );
+      } catch {
+        continue;
+      }
+
       const expectedPeriod = getExpectedAveragingPeriod(p.code);
       const minRequiredHours = getRequiredMinimumHours(expectedPeriod);
       const hasPhysicallyPlausibleValue =
-        Number.isFinite(p.avg) &&
-        p.avg >= 0 &&
-        (p.code === "CO" ? p.avg <= 100 : p.avg <= 2000);
+        Number.isFinite(normalizedConc.value) &&
+        normalizedConc.value >= 0 &&
+        (p.code === "CO"
+          ? normalizedConc.value <= 100
+          : p.code === "PB"
+            ? normalizedConc.value <= 20
+            : normalizedConc.value <= 2000);
       const hasConsistentMinMax =
         p.min !== null && p.max !== null
           ? p.min <= p.avg && p.avg <= p.max
           : true;
-      const hasValidTimestamp = Boolean(entry.lastUpdatedIso);
+
+      // Per-record timestamp freshness & cross-pollutant temporal alignment (<= 60 min)
+      const pCheck = p.lastUpdatedIso
+        ? isDataStale(p.lastUpdatedIso, now, 180, 5)
+        : { stale: true, ageMinutes: null };
+      const pMs = p.lastUpdatedIso ? new Date(p.lastUpdatedIso).getTime() : NaN;
+      const isAlignedWithStation =
+        latestValidMs > -Infinity &&
+        !Number.isNaN(pMs) &&
+        Math.abs(latestValidMs - pMs) <= 60 * 60_000;
+      const hasValidFreshTimestamp =
+        Boolean(p.lastUpdatedIso) && !pCheck.stale && isAlignedWithStation;
+
       const hasVerifiedObservationCount =
         p.sampleHoursCount !== null &&
         Number.isFinite(p.sampleHoursCount) &&
@@ -221,31 +316,32 @@ export function normalizeCpcbRecords(
       const isPeriodValid =
         hasPhysicallyPlausibleValue &&
         hasConsistentMinMax &&
-        hasValidTimestamp &&
+        hasValidFreshTimestamp &&
         hasVerifiedObservationCount;
 
       aqiInputs.push({
         code: p.code,
         concentration: p.avg,
-        unit: normalizedUnit,
+        unit: p.parsedUnit,
         averagingPeriodHours: expectedPeriod,
         sampleHoursCount: p.sampleHoursCount ?? undefined,
         isAveragedPeriodValid: isPeriodValid,
       });
     }
 
+    const indianAqi = calculateIndianAqi(aqiInputs);
     stations.push({
       stationName: entry.stationName,
       city: entry.city,
       state: entry.state,
       latitude: entry.latitude,
       longitude: entry.longitude,
-      lastUpdatedRaw: entry.lastUpdatedRaw,
-      lastUpdatedIso: entry.lastUpdatedIso,
-      stale: staleInfo.stale,
+      lastUpdatedRaw: stationUpdatedRaw,
+      lastUpdatedIso: stationUpdatedIso,
+      stale: staleInfo.stale || latestValidIso === null,
       ageMinutes: staleInfo.ageMinutes,
       pollutants: entry.pollutants,
-      indianAqi: calculateIndianAqi(aqiInputs),
+      indianAqi,
       sourceLabel: "CPCB / data.gov.in Official Monitoring Station",
       isMeasured: true,
     });
@@ -284,6 +380,8 @@ export async function fetchCpcbStations(params: {
 
   try {
     const allRecords: z.infer<typeof CpcbRecordSchema>[] = [];
+    const seenKeys = new Set<string>();
+    let rawRecordsFetched = 0;
     let offset = 0;
     const limit = 100;
     const maxOffset = 2500;
@@ -304,11 +402,15 @@ export async function fetchCpcbStations(params: {
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
-      const res = await fetchImpl(url.toString(), {
-        signal: controller.signal,
-        headers: { Accept: "application/json" },
-      });
-      clearTimeout(timer);
+      let res: Response;
+      try {
+        res = await fetchImpl(url.toString(), {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+      } finally {
+        clearTimeout(timer);
+      }
 
       if (!res.ok) {
         paginationFailed = true;
@@ -332,12 +434,20 @@ export async function fetchCpcbStations(params: {
         break;
       }
 
-      allRecords.push(...parsed.data.records);
+      rawRecordsFetched += parsed.data.records.length;
+      for (const rec of parsed.data.records) {
+        const recKey = `${(rec.state ?? "").trim()}::${(rec.city ?? "").trim()}::${(rec.station ?? "").trim()}::${(rec.pollutant_id ?? "").trim()}::${(rec.last_update ?? "").trim()}`;
+        if (!seenKeys.has(recKey)) {
+          seenKeys.add(recKey);
+          allRecords.push(rec);
+        }
+      }
+
       if (parsed.data.records.length < limit) {
         hasMore = false;
       } else if (
         totalRecordsReported !== null &&
-        allRecords.length >= totalRecordsReported
+        rawRecordsFetched >= totalRecordsReported
       ) {
         hasMore = false;
       } else {
@@ -348,9 +458,8 @@ export async function fetchCpcbStations(params: {
     const isPaginationComplete =
       !paginationFailed &&
       !hasMore &&
-      (totalRecordsReported !== null
-        ? allRecords.length >= totalRecordsReported
-        : true);
+      (totalRecordsReported === null ||
+        allRecords.length >= totalRecordsReported);
 
     const stations = normalizeCpcbRecords(allRecords);
     if (stations.length === 0) {
