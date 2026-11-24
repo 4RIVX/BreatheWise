@@ -1,0 +1,8 @@
+{
+  "name": "BreatheWise",
+  "description": "AI-Powered Winter Smog and Air Pollution Assistant — Report. Understand. Breathe Better.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
