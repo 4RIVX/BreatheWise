@@ -56,11 +56,15 @@ export interface CpcbPollutantReading {
   parsedUnit: NormalizedPollutantUnit | null;
   lastUpdatedRaw: string | null;
   lastUpdatedIso: string | null;
+  fresh?: boolean;
+  stale?: boolean;
+  ageMinutes?: number | null;
+  alignedWithStation?: boolean;
 }
 
 export type StationSourceLabel =
   | "CPCB / data.gov.in Official Monitoring Station"
-  | "CPCB / OpenAQ v3 Hourly Monitoring Station";
+  | "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology";
 
 export interface CpcbStationMeasurement {
   stationName: string;
@@ -75,6 +79,10 @@ export interface CpcbStationMeasurement {
   pollutants: CpcbPollutantReading[];
   indianAqi: IndianAqiResult;
   sourceLabel: StationSourceLabel;
+  feedOrigin: "cpcb_datagovin" | "openaq_v3";
+  providerName?: string | null;
+  ownerName?: string | null;
+  licenseAttribution?: string | null;
   isMeasured: true;
 }
 
@@ -263,7 +271,27 @@ export function normalizeCpcbRecords(
       : { stale: true, ageMinutes: null };
 
     const aqiInputs: PollutantConcentrationInput[] = [];
+    const annotatedPollutants: CpcbPollutantReading[] = [];
     for (const p of entry.pollutants) {
+      const pCheck = p.lastUpdatedIso
+        ? isDataStale(p.lastUpdatedIso, now, 180, 5)
+        : { stale: true, ageMinutes: null, isFuture: false };
+      const pMs = p.lastUpdatedIso ? new Date(p.lastUpdatedIso).getTime() : NaN;
+      const isAlignedWithStation =
+        latestValidMs > -Infinity &&
+        !Number.isNaN(pMs) &&
+        Math.abs(latestValidMs - pMs) <= 60 * 60_000;
+      const hasValidFreshTimestamp =
+        Boolean(p.lastUpdatedIso) && !pCheck.stale && isAlignedWithStation;
+
+      annotatedPollutants.push({
+        ...p,
+        fresh: hasValidFreshTimestamp,
+        stale: pCheck.stale,
+        ageMinutes: pCheck.ageMinutes,
+        alignedWithStation: isAlignedWithStation,
+      });
+
       if (p.avg === null || !Number.isFinite(p.avg) || p.avg < 0) continue;
       if (!p.parsedUnit) {
         // Explicit unit missing or unrecognized — reject rather than guessing mg/m3 vs ug/m3
@@ -295,18 +323,6 @@ export function normalizeCpcbRecords(
         p.min !== null && p.max !== null
           ? p.min <= p.avg && p.avg <= p.max
           : true;
-
-      // Per-record timestamp freshness & cross-pollutant temporal alignment (<= 60 min)
-      const pCheck = p.lastUpdatedIso
-        ? isDataStale(p.lastUpdatedIso, now, 180, 5)
-        : { stale: true, ageMinutes: null };
-      const pMs = p.lastUpdatedIso ? new Date(p.lastUpdatedIso).getTime() : NaN;
-      const isAlignedWithStation =
-        latestValidMs > -Infinity &&
-        !Number.isNaN(pMs) &&
-        Math.abs(latestValidMs - pMs) <= 60 * 60_000;
-      const hasValidFreshTimestamp =
-        Boolean(p.lastUpdatedIso) && !pCheck.stale && isAlignedWithStation;
 
       const hasVerifiedObservationCount =
         p.sampleHoursCount !== null &&
@@ -340,9 +356,13 @@ export function normalizeCpcbRecords(
       lastUpdatedIso: stationUpdatedIso,
       stale: staleInfo.stale || latestValidIso === null,
       ageMinutes: staleInfo.ageMinutes,
-      pollutants: entry.pollutants,
+      pollutants: annotatedPollutants,
       indianAqi,
       sourceLabel: "CPCB / data.gov.in Official Monitoring Station",
+      feedOrigin: "cpcb_datagovin",
+      providerName: "Central Pollution Control Board (CPCB) via data.gov.in",
+      ownerName: "Central Pollution Control Board (CPCB)",
+      licenseAttribution: "Government Open Data License - India (GODL)",
       isMeasured: true,
     });
   }

@@ -50,6 +50,35 @@ const OpenAqLocationSchema = z.object({
     })
     .nullable()
     .optional(),
+  provider: z
+    .object({
+      id: z.number().optional(),
+      name: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  owner: z
+    .object({
+      id: z.number().optional(),
+      name: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  licenses: z
+    .array(
+      z.object({
+        id: z.number().optional(),
+        name: z.string().nullable().optional(),
+        attribution: z
+          .object({
+            name: z.string().nullable().optional(),
+            url: z.string().nullable().optional(),
+          })
+          .nullable()
+          .optional(),
+      })
+    )
+    .optional(),
   coordinates: z
     .object({
       latitude: z.number(),
@@ -344,15 +373,24 @@ export async function fetchOpenAqHourlyStations(params: {
       );
       if (validSensors.length === 0) continue;
 
-      // Determine latest non-future hour across the station's sensors
-      let stationLatestMs = -Infinity;
-      let stationLatestIso: string | null = null;
+      // Determine station reference timestamp strictly from individually fresh, non-future sensors
+      let stationFreshMs = -Infinity;
+      let stationFreshIso: string | null = null;
+      let fallbackLatestMs = -Infinity;
+      let fallbackLatestIso: string | null = null;
       for (const s of validSensors) {
-        if (s.latestMs > stationLatestMs && s.latestHourIso) {
-          stationLatestMs = s.latestMs;
-          stationLatestIso = s.latestHourIso;
+        if (!s.latestHourIso) continue;
+        const check = isDataStale(s.latestHourIso, now, 180, 5);
+        if (!check.isFuture && s.latestMs > fallbackLatestMs) {
+          fallbackLatestMs = s.latestMs;
+          fallbackLatestIso = s.latestHourIso;
+        }
+        if (!check.stale && s.latestMs > stationFreshMs) {
+          stationFreshMs = s.latestMs;
+          stationFreshIso = s.latestHourIso;
         }
       }
+      const stationLatestIso = stationFreshIso ?? fallbackLatestIso;
       if (!stationLatestIso) continue;
 
       const staleInfo = isDataStale(stationLatestIso, now, 180, 5);
@@ -361,13 +399,22 @@ export async function fetchOpenAqHourlyStations(params: {
 
       for (const s of validSensors) {
         const expectedPeriod = getExpectedAveragingPeriod(s.code);
+        const sensorFreshCheck = s.latestHourIso
+          ? isDataStale(s.latestHourIso, now, 180, 5)
+          : { stale: true, ageMinutes: null, isFuture: false };
+        const alignedWithStation =
+          stationFreshMs > -Infinity &&
+          Number.isFinite(s.latestMs) &&
+          Math.abs(stationFreshMs - s.latestMs) <= 60 * 60_000;
+        const sensorEligible = !sensorFreshCheck.stale && alignedWithStation;
+
+        const rollAnchorIso = sensorEligible
+          ? stationLatestIso
+          : (s.latestHourIso ?? stationLatestIso);
         const roll =
           expectedPeriod === 8
-            ? computeMax8HourRollingAverageOver24Hours(
-                s.samples,
-                stationLatestIso
-              )
-            : computeTimeBoundedRollingAverage(s.samples, stationLatestIso, 24);
+            ? computeMax8HourRollingAverageOver24Hours(s.samples, rollAnchorIso)
+            : computeTimeBoundedRollingAverage(s.samples, rollAnchorIso, 24);
 
         const numericVals = s.samples
           .map((x) => x.value)
@@ -386,6 +433,10 @@ export async function fetchOpenAqHourlyStations(params: {
           parsedUnit: s.parsedUnit,
           lastUpdatedRaw: s.latestHourIso,
           lastUpdatedIso: s.latestHourIso,
+          fresh: sensorEligible,
+          stale: sensorFreshCheck.stale,
+          ageMinutes: sensorFreshCheck.ageMinutes,
+          alignedWithStation,
         });
 
         if (roll.mean !== null && s.parsedUnit) {
@@ -395,10 +446,19 @@ export async function fetchOpenAqHourlyStations(params: {
             unit: s.parsedUnit,
             averagingPeriodHours: expectedPeriod,
             sampleHoursCount: roll.validCount,
-            isAveragedPeriodValid: roll.validCount >= 16,
+            // Reject sensor unless IT IS independently fresh (<=180 min), aligned (<=60 min), AND has >=16h
+            isAveragedPeriodValid: sensorEligible && roll.validCount >= 16,
           });
         }
       }
+
+      const providerName = candidate.loc.provider?.name?.trim() || null;
+      const ownerName = candidate.loc.owner?.name?.trim() || null;
+      const licenseNames = (candidate.loc.licenses ?? [])
+        .map((l) => l.attribution?.name?.trim() || l.name?.trim())
+        .filter((x): x is string => Boolean(x));
+      const licenseAttribution =
+        licenseNames.length > 0 ? licenseNames.join("; ") : null;
 
       const indianAqi: IndianAqiResult = calculateIndianAqi(aqiInputs);
       stations.push({
@@ -410,11 +470,16 @@ export async function fetchOpenAqHourlyStations(params: {
         longitude: candidate.loc.coordinates?.longitude ?? null,
         lastUpdatedRaw: stationLatestIso,
         lastUpdatedIso: stationLatestIso,
-        stale: staleInfo.stale,
+        stale: staleInfo.stale || stationFreshIso === null,
         ageMinutes: staleInfo.ageMinutes,
         pollutants,
         indianAqi,
-        sourceLabel: "CPCB / OpenAQ v3 Hourly Monitoring Station",
+        sourceLabel:
+          "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology",
+        feedOrigin: "openaq_v3",
+        providerName,
+        ownerName,
+        licenseAttribution,
         isMeasured: true,
       });
     }

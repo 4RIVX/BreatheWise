@@ -334,15 +334,32 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-600">
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <p className="font-semibold text-slate-800">
-                Original Factor · {impact.originalFactor.factorVersion} (
-                {impact.originalFactor.publicationYear})
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold text-slate-800">
+                  Original Factor · {impact.originalFactor.factorVersion} (
+                  {impact.originalFactor.publicationYear})
+                </p>
+                {impact.originalFactor.isIllustrativeEstimate && (
+                  <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                    Illustrative Estimate
+                  </span>
+                )}
+              </div>
               <p>Scope: {impact.originalFactor.pollutantScope}</p>
               <p>
                 Source: {impact.originalFactor.source} (
                 {impact.originalFactor.pageOrTableRef})
               </p>
+              {impact.originalFactor.verifiedGridFactorNote && (
+                <p className="text-slate-700">
+                  {impact.originalFactor.verifiedGridFactorNote}
+                </p>
+              )}
+              {impact.originalFactor.assumptionNote && (
+                <p className="text-amber-900 font-medium">
+                  {impact.originalFactor.assumptionNote}
+                </p>
+              )}
               <p>
                 Reference:{" "}
                 <a
@@ -360,15 +377,32 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             </div>
 
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <p className="font-semibold text-slate-800">
-                Alternative Factor · {impact.alternativeFactor.factorVersion} (
-                {impact.alternativeFactor.publicationYear})
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold text-slate-800">
+                  Alternative Factor · {impact.alternativeFactor.factorVersion}{" "}
+                  ({impact.alternativeFactor.publicationYear})
+                </p>
+                {impact.alternativeFactor.isIllustrativeEstimate && (
+                  <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                    Illustrative Estimate
+                  </span>
+                )}
+              </div>
               <p>Scope: {impact.alternativeFactor.pollutantScope}</p>
               <p>
                 Source: {impact.alternativeFactor.source} (
                 {impact.alternativeFactor.pageOrTableRef})
               </p>
+              {impact.alternativeFactor.verifiedGridFactorNote && (
+                <p className="text-slate-700">
+                  {impact.alternativeFactor.verifiedGridFactorNote}
+                </p>
+              )}
+              {impact.alternativeFactor.assumptionNote && (
+                <p className="text-amber-900 font-medium">
+                  {impact.alternativeFactor.assumptionNote}
+                </p>
+              )}
               <p>
                 Reference:{" "}
                 <a

@@ -24,6 +24,7 @@ export interface TranslationBundle {
     dashboardTitle: string;
     dashboardSubtitle: string;
     measuredStationLabel: string;
+    openAqStationLabel: string;
     modelledForecastLabel: string;
     indianAqiTitle: string;
     guardianTitle: string;
@@ -64,8 +65,10 @@ export const TRANSLATIONS: Record<UiLanguage, TranslationBundle> = {
     sections: {
       dashboardTitle: "Air Quality Intelligence Dashboard",
       dashboardSubtitle:
-        "India-first air quality monitoring separating official CPCB station measurements from Open-Meteo regional modelled forecasts.",
+        "India-first air quality monitoring separating ground station measurements (CPCB or OpenAQ hourly) from Open-Meteo regional modelled forecasts.",
       measuredStationLabel: "Official Monitoring Station (CPCB / data.gov.in)",
+      openAqStationLabel:
+        "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology",
       modelledForecastLabel: "Modelled Regional Forecast (Open-Meteo)",
       indianAqiTitle: "Official Indian National AQI (CPCB Methodology)",
       guardianTitle: "AI Family Guardian",
@@ -107,8 +110,9 @@ export const TRANSLATIONS: Record<UiLanguage, TranslationBundle> = {
     sections: {
       dashboardTitle: "காற்று தர நுண்ணறிவு முகப்பு",
       dashboardSubtitle:
-        "அதிகாரப்பூர்வ CPCB நிலைய அளவீடுகள் மற்றும் Open-Meteo பிராந்திய கணிப்புகளைத் தனித்தனியாகக் காட்டும் இந்திய காற்று தர தளம்.",
+        "நிலைய அளவீடுகள் (CPCB அல்லது OpenAQ மணிநேரத் தரவு) மற்றும் Open-Meteo பிராந்திய கணிப்புகளைத் தனித்தனியாகக் காட்டும் இந்திய காற்று தர தளம்.",
       measuredStationLabel: "அதிகாரப்பூர்வ அளவீட்டு நிலையம் (CPCB / data.gov.in)",
+      openAqStationLabel: "OpenAQ மணிநேர அளவீடுகள் — CPCB முறையில் கணக்கிடப்பட்ட AQI",
       modelledForecastLabel: "மாதிரி பிராந்திய கணிப்பு (Open-Meteo)",
       indianAqiTitle: "இந்திய தேசிய AQI கணக்கீடு (CPCB முறை)",
       guardianTitle: "AI குடும்பப் பாதுகாவலர்",

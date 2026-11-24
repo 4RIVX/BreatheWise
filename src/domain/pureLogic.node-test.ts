@@ -54,4 +54,6 @@ test("pure domain calculations: Indian AQI, Indoor ACH, and Eco Impact", () => {
   assert.equal(eco.emissionsAvoidedMetricLabel, "CO2");
   assert.equal(eco.scopeWarning, null);
   assert.equal(eco.vehicleTripsAvoided, 10);
+  assert.equal(eco.originalFactor.isIllustrativeEstimate, false);
+  assert.equal(eco.alternativeFactor.isIllustrativeEstimate, true);
 });

@@ -16,6 +16,10 @@ export interface CpcbPollutantView {
   min: number | null;
   max: number | null;
   unit: string;
+  fresh?: boolean;
+  stale?: boolean;
+  ageMinutes?: number | null;
+  alignedWithStation?: boolean;
 }
 
 export interface CpcbStationView {
@@ -45,6 +49,10 @@ export interface CpcbStationView {
     }[];
   };
   sourceLabel: string;
+  feedOrigin?: "cpcb_datagovin" | "openaq_v3";
+  providerName?: string | null;
+  ownerName?: string | null;
+  licenseAttribution?: string | null;
   isMeasured: true;
 }
 
@@ -184,6 +192,12 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
     measured?.status === "available" && measured.stations.length > 0
       ? (measured.stations[selectedCpcbIndex] ?? measured.stations[0])
       : null;
+
+  const isOpenAqStation = Boolean(
+    selectedStation &&
+    (selectedStation.feedOrigin === "openaq_v3" ||
+      selectedStation.sourceLabel.includes("OpenAQ"))
+  );
 
   const handleSelectPreset = (preset: IndianCityPreset) => {
     setLatInput(String(preset.latitude));
@@ -405,16 +419,19 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* Panel 1: Official CPCB Monitoring Station Measurements */}
+        {/* Panel 1: Ground Monitoring Station Measurements (CPCB or OpenAQ Hourly) */}
         <article className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 flex flex-col justify-between space-y-5">
           <div className="space-y-4">
             <div className="pb-4 border-b border-slate-200">
               <p className="text-xs font-medium text-slate-500">
-                Measured Station Data · Resource{" "}
-                {measured?.resourceId ?? "3b01bcb8"}
+                {isOpenAqStation
+                  ? "Measured Station Data · OpenAQ v3 Hourly Feed"
+                  : `Measured Station Data · Resource ${measured?.resourceId ?? "3b01bcb8"}`}
               </p>
               <h2 className="text-lg font-semibold text-slate-900 mt-0.5">
-                {t.sections.measuredStationLabel}
+                {isOpenAqStation
+                  ? t.sections.openAqStationLabel
+                  : t.sections.measuredStationLabel}
               </h2>
             </div>
 
@@ -487,6 +504,20 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
                       {selectedStation.stationName} · {selectedStation.city},{" "}
                       {selectedStation.state}
                     </p>
+                    {isOpenAqStation && (
+                      <p className="text-xs text-slate-600 mt-1">
+                        Upstream Provider:{" "}
+                        {selectedStation.providerName || "OpenAQ v3 network"}
+                        {selectedStation.ownerName &&
+                        selectedStation.ownerName !==
+                          selectedStation.providerName
+                          ? ` · Owner: ${selectedStation.ownerName}`
+                          : ""}
+                        {selectedStation.licenseAttribution
+                          ? ` · License: ${selectedStation.licenseAttribution}`
+                          : ""}
+                      </p>
+                    )}
                     {selectedStation.indianAqi.calculable ? (
                       <div className="mt-1 flex items-baseline gap-2.5">
                         <span className="text-4xl font-mono font-bold tabular-nums text-slate-900">
@@ -503,7 +534,7 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
                     ) : (
                       <div className="mt-1 space-y-1">
                         <p className="text-sm font-semibold text-amber-800">
-                          Official Indian AQI Not Calculable
+                          Indian National AQI Not Calculable
                         </p>
                         <p className="text-xs text-slate-600">
                           {selectedStation.indianAqi.reasonIfNotCalculable}
@@ -531,7 +562,10 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
                     >
                       {selectedStation.stale ? "Stale (>3h)" : "Recent"}
                     </strong>{" "}
-                    · Measured Station
+                    ·{" "}
+                    {isOpenAqStation
+                      ? "OpenAQ Hourly Station"
+                      : "CPCB Measured Station"}
                   </p>
                 </div>
 
@@ -552,6 +586,14 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
                             {p.unit}
                           </span>
                         </p>
+                        {(p.stale === true ||
+                          p.alignedWithStation === false) && (
+                          <p className="text-[11px] text-amber-700 mt-0.5">
+                            {p.stale
+                              ? "Stale (>3h) — excluded"
+                              : "Unaligned (>1h) — excluded"}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -561,8 +603,9 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
           </div>
 
           <p className="text-xs text-slate-500 pt-3 border-t border-slate-100">
-            Source: Central Pollution Control Board (CPCB) via data.gov.in Open
-            Government Data Platform.
+            {isOpenAqStation
+              ? `Source: OpenAQ v3 Hourly Monitoring Measurements${selectedStation?.providerName ? ` · Provider: ${selectedStation.providerName}` : ""}${selectedStation?.ownerName ? ` · Owner: ${selectedStation.ownerName}` : ""}. Indian AQI calculated by BreatheWise using CPCB methodology.`
+              : "Source: Central Pollution Control Board (CPCB) via data.gov.in Open Government Data Platform."}
           </p>
         </article>
 

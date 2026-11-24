@@ -46,6 +46,8 @@ export const VerifiedAirContextSchema = z.object({
   locationLabel: z.string().trim().min(1).max(120),
   state: z.string().trim().max(80).optional(),
   measuredStationName: z.string().trim().max(120).nullable().optional(),
+  measuredSourceLabel: z.string().trim().max(160).nullable().optional(),
+  measuredProviderAttribution: z.string().trim().max(200).nullable().optional(),
   measuredAqi: z.number().min(0).max(500).nullable().optional(),
   measuredAqiCategory: z.string().trim().max(40).nullable().optional(),
   measuredTimestamp: z.string().trim().max(80).nullable().optional(),
@@ -112,7 +114,10 @@ export const AskRequestSchema = z.object({
 export const DataProvenanceSchema = z.object({
   measuredAvailable: z.boolean(),
   measuredSource: z
-    .enum(["CPCB / data.gov.in", "CPCB / OpenAQ v3 Hourly"])
+    .enum([
+      "CPCB / data.gov.in",
+      "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology",
+    ])
     .nullable(),
   measuredStationCount: z.number().int().min(0),
   measuredCached: z.boolean(),

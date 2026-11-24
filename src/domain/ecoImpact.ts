@@ -34,6 +34,9 @@ export interface EmissionFactorRecord {
   geographicRelevance: string;
   limitations: string;
   factorVersion: string;
+  isIllustrativeEstimate: boolean;
+  verifiedGridFactorNote?: string;
+  assumptionNote?: string;
 }
 
 export const EMISSION_FACTORS_INDIA: Record<
@@ -64,6 +67,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reports CO2 only (not full CO2e) and excludes upstream fuel refining; actual emissions vary with congestion, AC load, and engine displacement.",
     factorVersion: "IN-GHG-ROAD-2015-v2",
+    isIllustrativeEstimate: false,
   },
   car_diesel: {
     modeId: "car_diesel",
@@ -89,6 +93,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reports CO2 only (not full CO2e); diesel engines emit disproportionately higher NOx and PM2.5 than petrol per km.",
     factorVersion: "IN-GHG-ROAD-2015-v2",
+    isIllustrativeEstimate: false,
   },
   car_cng: {
     modeId: "car_cng",
@@ -114,10 +119,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reports CO2 only and excludes upstream methane (CH4) leakage in gas distribution pipelines.",
     factorVersion: "IN-GHG-CNG-2015-v2",
+    isIllustrativeEstimate: false,
   },
   car_ev: {
     modeId: "car_ev",
-    label: "Electric Car (India Grid)",
+    label: "Electric Car (India Grid · Illustrative)",
     fuelType: "Grid Electricity (0.675 kg CO2/kWh, CEA v22.0)",
     kgEmissionsPerVehicleKm: 0.108,
     kgEmissionsPerPassengerKm: 0.108,
@@ -126,20 +132,25 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
     source:
-      "CEA CO2 Baseline Database for the Indian Power Sector v22.0 (Aug 2026) + EV consumption (~0.16 kWh/km)",
+      "Illustrative Estimate: CEA CO2 Baseline Database v22.0 Grid Factor × Assumed EV Consumption",
     sourceUrl: "https://cea.nic.in/cdm-co2-baseline-view/",
-    publisher: "Central Electricity Authority (CEA) India & ARAI",
+    publisher: "Central Electricity Authority (CEA) India (grid factor only)",
     publicationYear: 2026,
     pageOrTableRef:
-      "Version 22.0 (FY 2025–26 All-India Weighted Average Grid Factor: 0.675 kg CO2/kWh)",
+      "CEA Version 22.0 (0.675 kg CO2/kWh All-India Weighted Average Grid Factor) verified; 0.16 kWh/km vehicle consumption is an illustrative assumption",
     pollutantScope: "CO2 (Grid Power Generation)",
     units: "kg CO2 per vehicle-km (grid-weighted, divided by occupancy)",
     calculationMethod:
-      "All-India weighted average grid factor (0.675 kg CO2/kWh, CEA v22.0) × 0.16 kWh/km",
+      "Verified All-India grid factor (0.675 kg CO2/kWh, CEA v22.0) × assumed 0.16 kWh/km",
     geographicRelevance: "All-India Grid (FY 2025–26 baseline)",
     limitations:
-      "Reflects CO2 from power generation only (not full CO2e); zero tailpipe exhaust, but upstream intensity depends on regional grid mix and charging losses.",
-    factorVersion: "CEA-GRID-2026-v22",
+      "Illustrative estimate combining verified CEA grid CO2 intensity with an unverified 0.16 kWh/km EV consumption assumption (not established by CEA). Excludes non-CO2 GHGs and charging/transmission losses.",
+    factorVersion: "CEA-GRID-2026-v22-ILLUS",
+    isIllustrativeEstimate: true,
+    verifiedGridFactorNote:
+      "Verified Grid Factor: 0.675 kg CO2/kWh (CEA CO2 Baseline Database v22.0, Aug 2026).",
+    assumptionNote:
+      "Illustrative Assumption (not established by CEA): 0.16 kWh/km EV energy draw and 1 passenger default occupancy.",
   },
   two_wheeler_petrol: {
     modeId: "two_wheeler_petrol",
@@ -165,6 +176,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reports CO2 only; rider faces direct roadside PM2.5/NO2 exposure without cabin filtration.",
     factorVersion: "IN-GHG-2W-2015-v2",
+    isIllustrativeEstimate: false,
   },
   auto_cng: {
     modeId: "auto_cng",
@@ -191,6 +203,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reports CO2 only; open-cabin design offers minimal protection against ambient traffic particulate spikes.",
     factorVersion: "IN-GHG-3W-2015-v2",
+    isIllustrativeEstimate: false,
   },
   city_bus_diesel: {
     modeId: "city_bus_diesel",
@@ -219,11 +232,12 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reflects CO2 only, not full CO2e; diesel buses generate high local NOx and PM2.5. Off-peak routes with lower ridership exhibit higher per-passenger intensity.",
     factorVersion: "WRI-INDIA-BUS-2015-v2",
+    isIllustrativeEstimate: false,
   },
   city_bus_electric: {
     modeId: "city_bus_electric",
-    label: "Electric Bus (India Grid)",
-    fuelType: "Grid Electricity (CEA v22.0)",
+    label: "Electric Bus (India Grid · Illustrative)",
+    fuelType: "Grid Electricity (0.675 kg CO2/kWh, CEA v22.0)",
     kgEmissionsPerVehicleKm: null,
     kgEmissionsPerPassengerKm: 0.017,
     ghgMetric: "CO2",
@@ -231,25 +245,30 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source:
-      "CEA CO2 Baseline v22.0 (Aug 2026) + FAME-II Urban E-Bus Benchmark (~0.88 kWh/km)",
+      "Illustrative Estimate: CEA CO2 Baseline Database v22.0 Grid Factor × Assumed E-Bus Draw & Occupancy",
     sourceUrl: "https://cea.nic.in/cdm-co2-baseline-view/",
-    publisher: "CEA India & FAME-II",
+    publisher: "Central Electricity Authority (CEA) India (grid factor only)",
     publicationYear: 2026,
     pageOrTableRef:
-      "Version 22.0 Grid Factor (0.675 kg CO2/kWh) + E-Bus Energy Benchmarks",
+      "CEA Version 22.0 (0.675 kg CO2/kWh Grid Factor) verified; 0.88 kWh/km e-bus draw & 35 passengers are illustrative assumptions",
     pollutantScope: "CO2 (Grid Generation per Passenger-km)",
     units: "kg CO2 per passenger-km",
     calculationMethod:
-      "Grid factor (0.675 kg CO2/kWh, CEA v22.0) × 0.88 kWh/km ÷ 35 avg passengers",
+      "Verified grid factor (0.675 kg CO2/kWh, CEA v22.0) × assumed 0.88 kWh/km ÷ assumed 35 passengers",
     geographicRelevance: "Indian smart city e-bus corridors",
     limitations:
-      "Reflects CO2 only (not full CO2e); actual kWh/km depends on air-conditioning load and stop-and-go congestion.",
-    factorVersion: "CEA-EBUS-2026-v22",
+      "Illustrative estimate combining verified CEA grid CO2 intensity with unverified 0.88 kWh/km consumption and 35-passenger occupancy assumptions (not established by CEA). Actual intensity varies with AC load and ridership.",
+    factorVersion: "CEA-EBUS-2026-v22-ILLUS",
+    isIllustrativeEstimate: true,
+    verifiedGridFactorNote:
+      "Verified Grid Factor: 0.675 kg CO2/kWh (CEA CO2 Baseline Database v22.0, Aug 2026).",
+    assumptionNote:
+      "Illustrative Assumptions (not established by CEA): 0.88 kWh/km urban e-bus draw and 35 average passengers per bus.",
   },
   metro_rail: {
     modeId: "metro_rail",
-    label: "Metro Rail",
-    fuelType: "Grid Electricity (CEA v22.0)",
+    label: "Metro Rail (India Grid · Illustrative)",
+    fuelType: "Grid Electricity (0.675 kg CO2/kWh, CEA v22.0)",
     kgEmissionsPerVehicleKm: null,
     kgEmissionsPerPassengerKm: 0.023,
     ghgMetric: "CO2",
@@ -257,21 +276,26 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source:
-      "DMRC Intensity Benchmark × CEA Grid Baseline v22.0 (0.675 kg CO2/kWh)",
+      "Illustrative Estimate: CEA CO2 Baseline Database v22.0 Grid Factor × Assumed Metro Energy Intensity",
     sourceUrl: "https://cea.nic.in/cdm-co2-baseline-view/",
-    publisher: "Delhi Metro Rail Corporation (DMRC) & CEA",
+    publisher: "Central Electricity Authority (CEA) India (grid factor only)",
     publicationYear: 2026,
     pageOrTableRef:
-      "CEA CO2 Baseline Database v22.0 (0.675 kg CO2/kWh) + DMRC (~0.034 kWh/p-km)",
+      "CEA Version 22.0 (0.675 kg CO2/kWh Grid Factor) verified; 0.034 kWh/p-km energy intensity is an illustrative assumption",
     pollutantScope: "CO2 (Traction & Station Power)",
     units: "kg CO2 per passenger-km",
     calculationMethod:
-      "Traction & station electricity (~0.034 kWh/p-km) × All-India grid factor (0.675 kg CO2/kWh, CEA v22.0)",
+      "Assumed traction & station draw (0.034 kWh/p-km) × verified All-India grid factor (0.675 kg CO2/kWh, CEA v22.0)",
     geographicRelevance:
       "Delhi, Chennai, Mumbai, Bengaluru, Kolkata Metro systems",
     limitations:
-      "Reflects CO2 only (not full CO2e); grid carbon intensity is lower where metros procure dedicated solar/renewable PPAs.",
-    factorVersion: "IN-METRO-2026-v22",
+      "Illustrative estimate combining verified CEA grid CO2 intensity with an unverified 0.034 kWh/p-km metro intensity assumption (not established by CEA). Lower where networks procure dedicated solar/renewable PPAs.",
+    factorVersion: "IN-METRO-2026-v22-ILLUS",
+    isIllustrativeEstimate: true,
+    verifiedGridFactorNote:
+      "Verified Grid Factor: 0.675 kg CO2/kWh (CEA CO2 Baseline Database v22.0, Aug 2026).",
+    assumptionNote:
+      "Illustrative Assumption (not established by CEA): 0.034 kWh/passenger-km traction and station energy intensity.",
   },
   suburban_rail: {
     modeId: "suburban_rail",
@@ -299,6 +323,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Reflects CO2 only based on 2015 traction baseline; peak overcrowding alters true per-passenger load factor.",
     factorVersion: "IN-SUBURBAN-2015-v1",
+    isIllustrativeEstimate: false,
   },
   bicycle_walk: {
     modeId: "bicycle_walk",
@@ -322,6 +347,7 @@ export const EMISSION_FACTORS_INDIA: Record<
     limitations:
       "Increases respiratory minute ventilation; avoid heavy arterial roads when PM2.5/AQI is Poor or higher.",
     factorVersion: "IPCC-ACTIVE-2006",
+    isIllustrativeEstimate: false,
   },
 };
 

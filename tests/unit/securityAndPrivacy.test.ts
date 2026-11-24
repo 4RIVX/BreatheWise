@@ -206,12 +206,12 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     }
   });
 
-  it("verifies sharp dependency is declared in package.json", () => {
+  it("verifies sharp dependency >=0.35.5 is declared in package.json", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")
     );
     expect(pkg.dependencies.sharp).toBeDefined();
-    expect(pkg.dependencies.sharp).toMatch(/^\^?0\.33/);
+    expect(pkg.dependencies.sharp).toMatch(/^\^?0\.3[5-9]/);
   });
 
   it("ensures default clean-air routines do not contain arbitrary uncalculated CO2 savings", () => {
@@ -1035,7 +1035,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     expect(staleContext.airContext.modelledPm25).toBeNull();
     expect(staleContext.airContext.dataLimitations).toContain("stale");
 
-    // 3. OpenAQ v3 hourly monitoring series with >= 16h produces genuine verified CPCB AQI
+    // 3. OpenAQ v3 hourly monitoring series with >= 16h produces genuine verified AQI with accurate OpenAQ provenance & attribution
     const now = new Date();
     const hourTimestamps = Array.from({ length: 20 }, (_, i) =>
       new Date(now.getTime() - (20 - i) * 3_600_000).toISOString()
@@ -1048,9 +1048,18 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
             results: [
               {
                 id: 9001,
-                name: "Alandur Bus Depot, Chennai - CPCB",
+                name: "Alandur Bus Depot, Chennai",
                 locality: "Chennai",
                 country: { code: "IN" },
+                provider: { id: 12, name: "CAIR / Tamil Nadu" },
+                owner: { id: 45, name: "Tamil Nadu Pollution Control Board" },
+                licenses: [
+                  {
+                    id: 1,
+                    name: "CC BY 4.0",
+                    attribution: { name: "TNPCB / OpenAQ Contributors" },
+                  },
+                ],
                 coordinates: { latitude: 13.0, longitude: 80.2 },
                 sensors: [
                   { id: 101, parameter: { name: "pm25", units: "µg/m³" } },
@@ -1114,8 +1123,16 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
 
     expect(openAqRes.status).toBe("available");
     expect(openAqRes.stations).toHaveLength(1);
+    expect(openAqRes.stations[0].feedOrigin).toBe("openaq_v3");
     expect(openAqRes.stations[0].sourceLabel).toBe(
-      "CPCB / OpenAQ v3 Hourly Monitoring Station"
+      "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology"
+    );
+    expect(openAqRes.stations[0].providerName).toBe("CAIR / Tamil Nadu");
+    expect(openAqRes.stations[0].ownerName).toBe(
+      "Tamil Nadu Pollution Control Board"
+    );
+    expect(openAqRes.stations[0].licenseAttribution).toBe(
+      "TNPCB / OpenAQ Contributors"
     );
     expect(openAqRes.stations[0].indianAqi.calculable).toBe(true);
     expect(openAqRes.stations[0].indianAqi.aqi).toBe(100);
@@ -1135,12 +1152,288 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     });
     expect(verifiedFromOpenAq.dataProvenance.measuredAvailable).toBe(true);
     expect(verifiedFromOpenAq.dataProvenance.measuredSource).toBe(
-      "CPCB / OpenAQ v3 Hourly"
+      "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology"
+    );
+    expect(verifiedFromOpenAq.airContext.measuredSourceLabel).toBe(
+      "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology"
+    );
+    expect(verifiedFromOpenAq.airContext.measuredProviderAttribution).toContain(
+      "CAIR / Tamil Nadu"
     );
     expect(verifiedFromOpenAq.airContext.measuredAqi).toBe(100);
   });
 
-  it("enforces lockfile parity for sharp and typescript and keeps .gitignore present", () => {
+  it("validates each OpenAQ sensor independently for freshness (<=180 min) and alignment (<=60 min) before AQI calculation", async () => {
+    const now = new Date("2026-06-01T12:00:00.000Z");
+    const freshSeries = (offsetMinutes: number) =>
+      Array.from({ length: 20 }, (_, i) =>
+        new Date(
+          now.getTime() - offsetMinutes * 60_000 - (19 - i) * 3_600_000
+        ).toISOString()
+      );
+    // Stale series ends 8 hours before `now`, yet still has 16h within a 24h lookback from `now - 30m`
+    const stale8hSeries = Array.from({ length: 20 }, (_, i) =>
+      new Date(
+        now.getTime() - 8 * 3_600_000 - (19 - i) * 3_600_000
+      ).toISOString()
+    );
+
+    // Case A: PM2.5 (30m old), PM10 (8h old — stale), NO2 (60m old) -> only 2 fresh aligned sensors -> AQI not calculable
+    clearOpenAqCache();
+    const caseAFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("api.openaq.org/v3/locations")) {
+        return new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: 9101,
+                name: "Mixed Freshness Station A",
+                locality: "Pune",
+                provider: { name: "OpenAQ Community" },
+                coordinates: { latitude: 18.52, longitude: 73.85 },
+                sensors: [
+                  { id: 201, parameter: { name: "pm25", units: "µg/m³" } },
+                  { id: 202, parameter: { name: "pm10", units: "µg/m³" } },
+                  { id: 203, parameter: { name: "no2", units: "µg/m³" } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/201/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(30).map((ts) => ({
+              value: 55,
+              parameter: { name: "pm25", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/202/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: stale8hSeries.map((ts) => ({
+              value: 350, // High stale PM10 must NOT leak into AQI
+              parameter: { name: "pm10", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/203/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(60).map((ts) => ({
+              value: 35,
+              parameter: { name: "no2", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("unavailable", { status: 503 });
+    };
+
+    const resA = await fetchOpenAqHourlyStations({
+      city: "Pune",
+      state: "Maharashtra",
+      latitude: 18.52,
+      longitude: 73.85,
+      apiKey: "test-key",
+      fetchImpl: caseAFetch,
+      now,
+    });
+    expect(resA.stations).toHaveLength(1);
+    expect(resA.stations[0].stale).toBe(false);
+    expect(resA.stations[0].indianAqi.calculable).toBe(false);
+    expect(resA.stations[0].indianAqi.validPollutantCount).toBe(2);
+    const pm10A = resA.stations[0].pollutants.find((p) => p.code === "PM10");
+    expect(pm10A?.stale).toBe(true);
+    expect(pm10A?.fresh).toBe(false);
+
+    // Case B: PM2.5 (30m), PM10 (8h old — stale 400 ug/m3), NO2 (60m), SO2 (45m)
+    // PM10 must be excluded; AQI computed strictly from PM2.5, NO2, SO2 only
+    clearOpenAqCache();
+    const caseBFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("api.openaq.org/v3/locations")) {
+        return new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: 9102,
+                name: "Mixed Freshness Station B",
+                locality: "Jaipur",
+                provider: { name: "OpenAQ Upstream" },
+                coordinates: { latitude: 26.91, longitude: 75.78 },
+                sensors: [
+                  { id: 301, parameter: { name: "pm25", units: "µg/m³" } },
+                  { id: 302, parameter: { name: "pm10", units: "µg/m³" } },
+                  { id: 303, parameter: { name: "no2", units: "µg/m³" } },
+                  { id: 304, parameter: { name: "so2", units: "µg/m³" } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/301/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(30).map((ts) => ({
+              value: 60,
+              parameter: { name: "pm25", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/302/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: stale8hSeries.map((ts) => ({
+              value: 400, // Stale extreme PM10 must be ignored
+              parameter: { name: "pm10", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/303/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(60).map((ts) => ({
+              value: 40,
+              parameter: { name: "no2", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/304/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(45).map((ts) => ({
+              value: 20,
+              parameter: { name: "so2", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("unavailable", { status: 503 });
+    };
+
+    const resB = await fetchOpenAqHourlyStations({
+      city: "Jaipur",
+      state: "Rajasthan",
+      latitude: 26.91,
+      longitude: 75.78,
+      apiKey: "test-key",
+      fetchImpl: caseBFetch,
+      now,
+    });
+    expect(resB.stations[0].indianAqi.calculable).toBe(true);
+    expect(resB.stations[0].indianAqi.validPollutantCount).toBe(3);
+    expect(
+      resB.stations[0].indianAqi.subIndices.map((s) => s.code)
+    ).not.toContain("PM10");
+    expect(resB.stations[0].indianAqi.prominentPollutant).toBe("PM2.5");
+    expect(resB.stations[0].indianAqi.aqi).toBe(100);
+
+    // Case C: Cross-sensor misalignment >60 min (PM2.5 15m old, PM10 110m old, NO2 30m old)
+    clearOpenAqCache();
+    const caseCFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("api.openaq.org/v3/locations")) {
+        return new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: 9103,
+                name: "Misaligned Station C",
+                locality: "Surat",
+                coordinates: { latitude: 21.17, longitude: 72.83 },
+                sensors: [
+                  { id: 401, parameter: { name: "pm25", units: "µg/m³" } },
+                  { id: 402, parameter: { name: "pm10", units: "µg/m³" } },
+                  { id: 403, parameter: { name: "no2", units: "µg/m³" } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/401/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(15).map((ts) => ({
+              value: 50,
+              parameter: { name: "pm25", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/402/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(110).map((ts) => ({
+              value: 95,
+              parameter: { name: "pm10", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/v3/sensors/403/hours")) {
+        return new Response(
+          JSON.stringify({
+            results: freshSeries(30).map((ts) => ({
+              value: 30,
+              parameter: { name: "no2", units: "µg/m³" },
+              period: { datetimeTo: { utc: ts } },
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("unavailable", { status: 503 });
+    };
+
+    const resC = await fetchOpenAqHourlyStations({
+      city: "Surat",
+      state: "Gujarat",
+      latitude: 21.17,
+      longitude: 72.83,
+      apiKey: "test-key",
+      fetchImpl: caseCFetch,
+      now,
+    });
+    expect(resC.stations[0].indianAqi.calculable).toBe(false);
+    const pm10C = resC.stations[0].pollutants.find((p) => p.code === "PM10");
+    expect(pm10C?.stale).toBe(false);
+    expect(pm10C?.alignedWithStation).toBe(false);
+    expect(pm10C?.fresh).toBe(false);
+  });
+
+  it("enforces lockfile parity for sharp >=0.35.5 and typescript ^5.9.3 and keeps .gitignore present", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")
     );
@@ -1149,11 +1442,11 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
       "utf-8"
     );
     expect(fs.existsSync(path.resolve(process.cwd(), ".gitignore"))).toBe(true);
-    expect(pkg.dependencies.sharp).toBe("^0.33.5");
+    expect(pkg.dependencies.sharp).toBe("^0.35.5");
     expect(pkg.dependencies.typescript).toBe("^5.9.3");
-    expect(bunLock).toContain('"sharp": "^0.33.5"');
+    expect(bunLock).toContain('"sharp": "^0.35.5"');
     expect(bunLock).toContain('"typescript": "^5.9.3"');
-    expect(bunLock).toContain('"sharp@0.33.5"');
+    expect(bunLock).toContain('"sharp@0.35.');
     expect(bunLock).toContain('"typescript@5.9.3"');
   });
 });

@@ -60,10 +60,8 @@ function selectBestEligibleStation(
 
   const ranked = [...eligibleStations].sort((a, b) => {
     // 1. Prefer verified multi-hour time-series stations (OpenAQ hourly) over snapshot-only feeds
-    const aHourly =
-      a.sourceLabel === "CPCB / OpenAQ v3 Hourly Monitoring Station" ? 0 : 1;
-    const bHourly =
-      b.sourceLabel === "CPCB / OpenAQ v3 Hourly Monitoring Station" ? 0 : 1;
+    const aHourly = a.feedOrigin === "openaq_v3" ? 0 : 1;
+    const bHourly = b.feedOrigin === "openaq_v3" ? 0 : 1;
     if (aHourly !== bHourly) return aHourly - bHourly;
 
     // 2. Proximity distance
@@ -169,9 +167,8 @@ export async function buildServerVerifiedAirContext(params: {
     const parts: string[] = [];
     if (measuredAvailable && matchedStation) {
       parts.push(
-        matchedStation.sourceLabel ===
-          "CPCB / OpenAQ v3 Hourly Monitoring Station"
-          ? "Measured station AQI is computed directly from verified >=16h OpenAQ v3 hourly monitoring series."
+        matchedStation.feedOrigin === "openaq_v3"
+          ? "Measured station AQI is computed from verified >=16h OpenAQ v3 hourly measurements (per-sensor fresh & aligned) using CPCB methodology."
           : "CPCB readings reflect fresh stationary monitors meeting CPCB >=16h averaging criteria."
       );
     } else if (paginationIncomplete) {
@@ -209,10 +206,27 @@ export async function buildServerVerifiedAirContext(params: {
     return parts.join(" ");
   })();
 
+  const providerAttributionParts = matchedStation
+    ? [
+        matchedStation.providerName
+          ? `Provider: ${matchedStation.providerName}`
+          : null,
+        matchedStation.ownerName &&
+        matchedStation.ownerName !== matchedStation.providerName
+          ? `Owner: ${matchedStation.ownerName}`
+          : null,
+      ].filter((x): x is string => Boolean(x))
+    : [];
+
   const airContext = VerifiedAirContextSchema.parse({
     locationLabel,
     state: location.state?.trim() || undefined,
     measuredStationName: matchedStation?.stationName ?? null,
+    measuredSourceLabel: matchedStation?.sourceLabel ?? null,
+    measuredProviderAttribution:
+      providerAttributionParts.length > 0
+        ? providerAttributionParts.join("; ")
+        : null,
     measuredAqi: matchedStation?.indianAqi.aqi ?? null,
     measuredAqiCategory: matchedStation?.indianAqi.category ?? null,
     measuredTimestamp:
@@ -241,16 +255,14 @@ export async function buildServerVerifiedAirContext(params: {
   });
 
   const measuredSource =
-    matchedStation?.sourceLabel === "CPCB / OpenAQ v3 Hourly Monitoring Station"
-      ? ("CPCB / OpenAQ v3 Hourly" as const)
+    matchedStation?.feedOrigin === "openaq_v3"
+      ? ("OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology" as const)
       : matchedStation
         ? ("CPCB / data.gov.in" as const)
         : null;
 
   const measuredCached =
-    matchedStation?.sourceLabel === "CPCB / OpenAQ v3 Hourly Monitoring Station"
-      ? openAq.cached
-      : cpcb.cached;
+    matchedStation?.feedOrigin === "openaq_v3" ? openAq.cached : cpcb.cached;
 
   const dataProvenance: DataProvenance = {
     measuredAvailable,

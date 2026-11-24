@@ -25,7 +25,7 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
     }
   });
 
-  it("uses updated WRI India 2015 CO2 and CEA v22.0 (0.675 kg CO2/kWh) factors accurately", () => {
+  it("uses updated WRI India 2015 CO2 and CEA v22.0 (0.675 kg CO2/kWh) factors accurately and labels electricity assumptions as illustrative", () => {
     expect(EMISSION_FACTORS_INDIA.auto_cng.kgEmissionsPerPassengerKm).toBe(
       0.10768
     );
@@ -42,6 +42,29 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
     expect(EMISSION_FACTORS_INDIA.metro_rail.kgEmissionsPerPassengerKm).toBe(
       0.023
     );
+
+    // Direct WRI / IPCC modes are NOT illustrative electricity derivations
+    expect(EMISSION_FACTORS_INDIA.car_petrol.isIllustrativeEstimate).toBe(
+      false
+    );
+    expect(EMISSION_FACTORS_INDIA.city_bus_diesel.isIllustrativeEstimate).toBe(
+      false
+    );
+    expect(EMISSION_FACTORS_INDIA.suburban_rail.isIllustrativeEstimate).toBe(
+      false
+    );
+
+    // Electricity-based modes explicitly separate verified CEA grid factor from illustrative vehicle draw/occupancy assumptions
+    for (const evMode of [
+      EMISSION_FACTORS_INDIA.car_ev,
+      EMISSION_FACTORS_INDIA.city_bus_electric,
+      EMISSION_FACTORS_INDIA.metro_rail,
+    ]) {
+      expect(evMode.isIllustrativeEstimate).toBe(true);
+      expect(evMode.verifiedGridFactorNote).toContain("0.675 kg CO2/kWh");
+      expect(evMode.assumptionNote).toContain("not established by CEA");
+      expect(evMode.source).toContain("Illustrative Estimate");
+    }
   });
 
   it("calculates consistent CO2 avoided when shifting from petrol car to metro rail (CEA v22.0)", () => {

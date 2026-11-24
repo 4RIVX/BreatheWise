@@ -162,6 +162,100 @@ describe("BreatheWise UI Components & Accessibility", () => {
     ).toEqual([]);
   });
 
+  it("labels OpenAQ v3 hourly stations distinctly from official CPCB feeds with upstream provider and owner attribution", () => {
+    render(
+      <AirQualityDashboard
+        activeLocation={{
+          city: "Chennai",
+          state: "Tamil Nadu",
+          latitude: 13.08,
+          longitude: 80.27,
+          source: "preset",
+        }}
+        onSelectLocation={vi.fn()}
+        measured={{
+          status: "available",
+          message: "OK",
+          resourceId: "openaq-v3",
+          stations: [
+            {
+              stationName: "Alandur Depot",
+              city: "Chennai",
+              state: "Tamil Nadu",
+              latitude: 13.0,
+              longitude: 80.2,
+              lastUpdatedRaw: "2026-06-01T11:30:00Z",
+              lastUpdatedIso: "2026-06-01T11:30:00Z",
+              stale: false,
+              ageMinutes: 30,
+              pollutants: [
+                {
+                  code: "PM2.5",
+                  rawId: "pm25",
+                  avg: 60,
+                  min: 40,
+                  max: 80,
+                  unit: "ug/m3",
+                  fresh: true,
+                  stale: false,
+                },
+                {
+                  code: "PM10",
+                  rawId: "pm10",
+                  avg: 300,
+                  min: 200,
+                  max: 400,
+                  unit: "ug/m3",
+                  fresh: false,
+                  stale: true,
+                },
+              ],
+              indianAqi: {
+                calculable: true,
+                aqi: 100,
+                category: "Satisfactory",
+                prominentPollutant: "PM2.5",
+                reasonIfNotCalculable: null,
+                subIndices: [],
+              },
+              sourceLabel:
+                "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology",
+              feedOrigin: "openaq_v3",
+              providerName: "CAIR / OpenAQ Provider",
+              ownerName: "Tamil Nadu Pollution Control Board",
+              licenseAttribution: "CC BY 4.0",
+              isMeasured: true,
+            },
+          ],
+          cached: false,
+          fetchedAtIso: "2026-06-01T12:00:00Z",
+        }}
+        modelled={null}
+        selectedCpcbIndex={0}
+        onSelectCpcbIndex={vi.fn()}
+        loading={false}
+        error={null}
+        t={TRANSLATIONS.en}
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: /OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology/i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/CAIR \/ OpenAQ Provider/i).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Tamil Nadu Pollution Control Board/i).length
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/Stale \(>3h\) — excluded/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/CPCB\) via data\.gov\.in/i)
+    ).not.toBeInTheDocument();
+  });
+
   it("toggles DispersionChart between SVG Chart and accessible Data Table", () => {
     render(
       <DispersionChart
@@ -240,6 +334,10 @@ describe("BreatheWise UI Components & Accessibility", () => {
 
     expect(screen.getByText(/India GHG Program/i)).toBeInTheDocument();
     expect(screen.getByText(/Table 4\.2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Illustrative Estimate$/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Illustrative Assumption \(not established by CEA\)/i)
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("link", {
         name: /cea\.nic\.in\/cdm-co2-baseline-view/i,
