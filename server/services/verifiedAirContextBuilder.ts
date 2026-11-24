@@ -57,17 +57,27 @@ export async function buildServerVerifiedAirContext(params: {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  const matchedStation = (() => {
-    if (cpcb.status !== "available" || cpcb.stations.length === 0) return null;
+  const paginationIncomplete =
+    cpcb.status === "available" && cpcb.isPaginationComplete === false;
 
-    const candidateStations = cpcb.stations.filter(
-      (s) => s.indianAqi.calculable || s.pollutants.length > 0
+  const matchedStation = (() => {
+    if (
+      cpcb.status !== "available" ||
+      cpcb.stations.length === 0 ||
+      paginationIncomplete
+    ) {
+      return null;
+    }
+
+    // Strict scientific & freshness gate: ONLY non-stale stations with calculable CPCB AQI
+    const eligibleStations = cpcb.stations.filter(
+      (s) => !s.stale && s.indianAqi.calculable && s.indianAqi.aqi !== null
     );
 
-    if (candidateStations.length === 0) return null;
+    if (eligibleStations.length === 0) return null;
 
     if (location.preferredStationName) {
-      const preferred = candidateStations.find(
+      const preferred = eligibleStations.find(
         (s) =>
           s.stationName.toLowerCase() ===
           location.preferredStationName?.trim().toLowerCase()
@@ -75,16 +85,8 @@ export async function buildServerVerifiedAirContext(params: {
       if (preferred) return preferred;
     }
 
-    const ranked = [...candidateStations].sort((a, b) => {
-      // 1. Calculable AQI priority
-      if (a.indianAqi.calculable !== b.indianAqi.calculable) {
-        return a.indianAqi.calculable ? -1 : 1;
-      }
-      // 2. Freshness priority (non-stale first)
-      if (a.stale !== b.stale) {
-        return a.stale ? 1 : -1;
-      }
-      // 3. Proximity distance
+    const ranked = [...eligibleStations].sort((a, b) => {
+      // 1. Proximity distance
       if (
         typeof a.latitude === "number" &&
         typeof a.longitude === "number" &&
@@ -109,12 +111,12 @@ export async function buildServerVerifiedAirContext(params: {
           return distA - distB;
         }
       }
-      // 4. Age in minutes
+      // 2. Age in minutes (freshest first)
       const ageA = a.ageMinutes ?? Infinity;
       const ageB = b.ageMinutes ?? Infinity;
       if (ageA !== ageB) return ageA - ageB;
 
-      // 5. Pollutant coverage count
+      // 3. Pollutant coverage count
       return b.pollutants.length - a.pollutants.length;
     });
 
@@ -127,6 +129,23 @@ export async function buildServerVerifiedAirContext(params: {
   const locationLabel = location.state?.trim()
     ? `${location.city.trim()}, ${location.state.trim()}`
     : location.city.trim();
+
+  const dataLimitations = (() => {
+    if (measuredAvailable) {
+      return "CPCB readings reflect fresh stationary monitors meeting CPCB averaging criteria; Open-Meteo values represent modelled regional grid averages.";
+    }
+    if (paginationIncomplete) {
+      return "CPCB station pagination was incomplete; rejected truncated station list and relied strictly on Open-Meteo regional atmospheric forecast.";
+    }
+    if (cpcb.status === "available" && cpcb.stations.length > 0) {
+      const anyFresh = cpcb.stations.some((s) => !s.stale);
+      if (!anyFresh) {
+        return "All nearby CPCB monitoring stations are stale (>3 hours old); assessment relies strictly on Open-Meteo regional atmospheric forecast.";
+      }
+      return "CPCB station feed lacked minimum hourly observation counts (16h/24h or 6h/8h) for official Indian AQI calculation; assessment relies strictly on Open-Meteo regional forecast.";
+    }
+    return "Official CPCB station telemetry unavailable; assessment relies strictly on Open-Meteo regional atmospheric forecast.";
+  })();
 
   const airContext = VerifiedAirContextSchema.parse({
     locationLabel,
@@ -156,16 +175,16 @@ export async function buildServerVerifiedAirContext(params: {
       ? openMeteo.weather.boundaryLayerHeightM
       : null,
     bestForecastWindow: modelledAvailable ? openMeteo.bestLowerPmWindow : null,
-    dataLimitations: !measuredAvailable
-      ? "Official CPCB station telemetry unavailable; assessment relies strictly on Open-Meteo regional atmospheric forecast."
-      : "CPCB readings reflect stationary monitors; Open-Meteo values represent modelled regional grid averages.",
+    dataLimitations,
   });
 
   const dataProvenance: DataProvenance = {
     measuredAvailable,
     measuredSource: measuredAvailable ? "CPCB / data.gov.in" : null,
     measuredStationCount:
-      cpcb.status === "available" ? cpcb.stations.length : 0,
+      cpcb.status === "available" && !paginationIncomplete
+        ? cpcb.stations.length
+        : 0,
     measuredCached: cpcb.cached,
     modelledAvailable,
     modelledSource: modelledAvailable ? "Open-Meteo Regional Forecast" : null,

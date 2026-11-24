@@ -50,6 +50,8 @@ test("pure domain calculations: Indian AQI, Indoor ACH, and Eco Impact", () => {
     alternativeMode: "metro_rail",
     journeys: 10,
   });
-  assert.equal(eco.co2eAvoidedKg, 14.7);
+  assert.equal(eco.emissionsAvoidedKg, 14.7);
+  assert.equal(eco.emissionsAvoidedMetricLabel, "CO2 / CO2e (mixed scope)");
+  assert.ok(eco.scopeWarning !== null);
   assert.equal(eco.vehicleTripsAvoided, 10);
 });

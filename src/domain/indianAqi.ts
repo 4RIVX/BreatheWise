@@ -220,14 +220,22 @@ export function calculateIndianAqi(
       continue;
     }
 
-    if (typeof item.sampleHoursCount === "number") {
-      const minHours = getRequiredMinimumHours(expectedPeriod);
-      if (item.sampleHoursCount < minHours) {
-        rejectedReasons.push(
-          `${item.code} has ${item.sampleHoursCount}h of data (minimum ${minHours}h required for ${expectedPeriod}h window).`
-        );
-        continue;
-      }
+    const minHours = getRequiredMinimumHours(expectedPeriod);
+    if (
+      typeof item.sampleHoursCount !== "number" ||
+      !Number.isFinite(item.sampleHoursCount)
+    ) {
+      rejectedReasons.push(
+        `${item.code} is missing hourly observation count (minimum ${minHours}h required for ${expectedPeriod}h averaging window).`
+      );
+      continue;
+    }
+
+    if (item.sampleHoursCount < minHours) {
+      rejectedReasons.push(
+        `${item.code} has ${item.sampleHoursCount}h of data (minimum ${minHours}h required for ${expectedPeriod}h window).`
+      );
+      continue;
     }
 
     const normalized = normalizePollutantConcentration(
@@ -314,6 +322,57 @@ export function computeRollingAverage(
   return {
     mean: Number((sum / valid.length).toFixed(2)),
     validCount: valid.length,
+  };
+}
+
+export interface TimedHourlySample {
+  timeIso: string;
+  value: number | null | undefined;
+}
+
+/**
+ * Computes a rolling average strictly bounded to the last `windowHours` hours ending at
+ * `referenceTimeIso` (inclusive), deduplicating by timestamp hour so gaps in a series
+ * never pull observations older than `windowHours` hours into the average.
+ */
+export function computeTimeBoundedRollingAverage(
+  samples: TimedHourlySample[],
+  referenceTimeIso: string,
+  windowHours: number
+): { mean: number | null; validCount: number } {
+  const endMs = new Date(referenceTimeIso).getTime();
+  if (Number.isNaN(endMs) || windowHours <= 0) {
+    return { mean: null, validCount: 0 };
+  }
+  const startMs = endMs - (windowHours - 1) * 3_600_000;
+  const seenHours = new Set<number>();
+  const validValues: number[] = [];
+
+  for (const sample of samples) {
+    if (
+      typeof sample.value !== "number" ||
+      !Number.isFinite(sample.value) ||
+      sample.value < 0
+    ) {
+      continue;
+    }
+    const ms = new Date(sample.timeIso).getTime();
+    if (Number.isNaN(ms) || ms < startMs || ms > endMs) {
+      continue;
+    }
+    const hourKey = Math.floor(ms / 3_600_000);
+    if (seenHours.has(hourKey)) continue;
+    seenHours.add(hourKey);
+    validValues.push(sample.value);
+  }
+
+  if (validValues.length === 0) {
+    return { mean: null, validCount: 0 };
+  }
+  const sum = validValues.reduce((a, b) => a + b, 0);
+  return {
+    mean: Number((sum / validValues.length).toFixed(2)),
+    validCount: validValues.length,
   };
 }
 

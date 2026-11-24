@@ -56,6 +56,8 @@ export interface MeasuredBlock {
   stations: CpcbStationView[];
   cached: boolean;
   fetchedAtIso: string;
+  totalRecordsReported?: number | null;
+  isPaginationComplete?: boolean;
 }
 
 export interface ModelledHourlyRow {
@@ -440,6 +442,19 @@ export const AirQualityDashboard: React.FC<AirQualityDashboardProps> = ({
 
             {measured?.status === "available" && selectedStation && (
               <div className="space-y-4">
+                {measured.isPaginationComplete === false && (
+                  <div
+                    role="status"
+                    className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900"
+                  >
+                    Partial CPCB catalog notice: upstream API returned{" "}
+                    {measured.stations.length} station(s) before pagination ended
+                    {measured.totalRecordsReported
+                      ? ` (reported total: ${measured.totalRecordsReported} records)`
+                      : ""}
+                    . Verified AI context withholds incomplete station datasets.
+                  </div>
+                )}
                 {measured.stations.length > 1 && (
                   <div>
                     <label

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   calculateIndianAqi,
-  computeRollingAverage,
+  computeTimeBoundedRollingAverage,
   isDataStale,
   type IndianAqiResult,
   type PollutantConcentrationInput,
@@ -63,6 +63,14 @@ export const OpenMeteoAqSchema = z
           });
           return;
         }
+        if (i > 0 && ms - prevMs !== 3_600_000) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Hourly timestamps must be exactly 1 hour apart (gap detected at index ${i}: ${times[i - 1]} -> ${times[i]}).`,
+            path: ["hourly", "time", i],
+          });
+          return;
+        }
         prevMs = ms;
       }
 
@@ -116,6 +124,14 @@ export const OpenMeteoWeatherSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `Weather timestamps must be valid and strictly increasing at index ${i}`,
+            path: ["hourly", "time", i],
+          });
+          return;
+        }
+        if (i > 0 && ms - prevMs !== 3_600_000) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Weather hourly timestamps must be exactly 1 hour apart at index ${i}`,
             path: ["hourly", "time", i],
           });
           return;
@@ -269,31 +285,43 @@ export async function fetchOpenMeteoForecast(params: {
     const aq = aqParsed.data;
     const times = aq.hourly?.time ?? [];
     const curIdx = findCurrentHourIndex(times, aq.current?.time);
+    const refTimeIso = curIdx >= 0 ? times[curIdx] : (times[times.length - 1] ?? "");
 
-    // Slice up to current index for 24h/8h rolling averages (past observations/modelled history)
-    const historySliceEnd = curIdx >= 0 ? curIdx + 1 : times.length;
-    const pm25Roll = computeRollingAverage(
-      (aq.hourly?.pm2_5 ?? []).slice(0, historySliceEnd),
+    const buildTimedSamples = (arr?: (number | null)[]) =>
+      times.map((timeIso, idx) => ({
+        timeIso,
+        value: arr?.[idx] ?? null,
+      }));
+
+    // Time-bounded rolling averages strictly within 24h / 8h of reference hour
+    const pm25Roll = computeTimeBoundedRollingAverage(
+      buildTimedSamples(aq.hourly?.pm2_5),
+      refTimeIso,
       24
     );
-    const pm10Roll = computeRollingAverage(
-      (aq.hourly?.pm10 ?? []).slice(0, historySliceEnd),
+    const pm10Roll = computeTimeBoundedRollingAverage(
+      buildTimedSamples(aq.hourly?.pm10),
+      refTimeIso,
       24
     );
-    const no2Roll = computeRollingAverage(
-      (aq.hourly?.nitrogen_dioxide ?? []).slice(0, historySliceEnd),
+    const no2Roll = computeTimeBoundedRollingAverage(
+      buildTimedSamples(aq.hourly?.nitrogen_dioxide),
+      refTimeIso,
       24
     );
-    const so2Roll = computeRollingAverage(
-      (aq.hourly?.sulphur_dioxide ?? []).slice(0, historySliceEnd),
+    const so2Roll = computeTimeBoundedRollingAverage(
+      buildTimedSamples(aq.hourly?.sulphur_dioxide),
+      refTimeIso,
       24
     );
-    const o3Roll = computeRollingAverage(
-      (aq.hourly?.ozone ?? []).slice(0, historySliceEnd),
+    const o3Roll = computeTimeBoundedRollingAverage(
+      buildTimedSamples(aq.hourly?.ozone),
+      refTimeIso,
       8
     );
-    const coRoll = computeRollingAverage(
-      (aq.hourly?.carbon_monoxide ?? []).slice(0, historySliceEnd),
+    const coRoll = computeTimeBoundedRollingAverage(
+      buildTimedSamples(aq.hourly?.carbon_monoxide),
+      refTimeIso,
       8
     );
 
@@ -355,6 +383,22 @@ export async function fetchOpenMeteoForecast(params: {
 
     const indianAqiFromRollingModel = calculateIndianAqi(aqiInputs);
 
+    // Align weather series strictly by timestamp key rather than raw array index
+    const weatherByTime = new Map<
+      string,
+      { windKmh: number | null; boundaryLayerHeightM: number | null }
+    >();
+    if (weatherParsed?.hourly?.time) {
+      const wTimes = weatherParsed.hourly.time;
+      for (let j = 0; j < wTimes.length; j += 1) {
+        weatherByTime.set(wTimes[j], {
+          windKmh: weatherParsed.hourly.wind_speed_10m?.[j] ?? null,
+          boundaryLayerHeightM:
+            weatherParsed.hourly.boundary_layer_height?.[j] ?? null,
+        });
+      }
+    }
+
     // Build next 24h forecast window series
     const startIdx = Math.max(0, curIdx >= 0 ? curIdx - 6 : 0);
     const endIdx = Math.min(times.length, startIdx + 24);
@@ -362,6 +406,7 @@ export async function fetchOpenMeteoForecast(params: {
 
     for (let i = startIdx; i < endIdx; i += 1) {
       const t = times[i];
+      const matchedWeather = weatherByTime.get(t);
       hourlySeries.push({
         timeIso: t,
         hourLabel: t.slice(11, 16),
@@ -371,9 +416,8 @@ export async function fetchOpenMeteoForecast(params: {
         so2: aq.hourly?.sulphur_dioxide?.[i] ?? null,
         ozone: aq.hourly?.ozone?.[i] ?? null,
         coUgm3: aq.hourly?.carbon_monoxide?.[i] ?? null,
-        windKmh: weatherParsed?.hourly?.wind_speed_10m?.[i] ?? null,
-        boundaryLayerHeightM:
-          weatherParsed?.hourly?.boundary_layer_height?.[i] ?? null,
+        windKmh: matchedWeather?.windKmh ?? null,
+        boundaryLayerHeightM: matchedWeather?.boundaryLayerHeightM ?? null,
       });
     }
 
@@ -413,8 +457,8 @@ export async function fetchOpenMeteoForecast(params: {
       : { stale: false, ageMinutes: null };
 
     const curBlh =
-      curIdx >= 0
-        ? (weatherParsed?.hourly?.boundary_layer_height?.[curIdx] ?? null)
+      refTimeIso
+        ? (weatherByTime.get(refTimeIso)?.boundaryLayerHeightM ?? null)
         : null;
 
     const result: OpenMeteoForecastResult = {

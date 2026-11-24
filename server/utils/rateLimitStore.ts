@@ -73,16 +73,23 @@ export class MemoryRateLimitStore implements Store {
   }
 }
 
+export class DistributedRateLimitUnavailableError extends Error {
+  constructor(message = "Distributed rate-limit store unavailable.") {
+    super(message);
+    this.name = "DistributedRateLimitUnavailableError";
+  }
+}
+
 /**
  * Distributed Redis REST (Upstash-compatible) Store for sharing rate-limit
  * counters across multiple Cloud Run instances without paid GCP infrastructure.
- * Falls back safely to local memory if the remote store is transiently unreachable.
+ * Fails closed cleanly with DistributedRateLimitUnavailableError when the shared
+ * store is unreachable rather than silently falling back to per-instance memory.
  */
 export class RedisRestRateLimitStore implements Store {
   private readonly restUrl: string;
   private readonly restToken: string;
   private readonly fetchImpl: typeof fetch;
-  private readonly fallback = new MemoryRateLimitStore();
   private windowMs = 60_000;
   public prefix = "bw:dist:rl:";
 
@@ -90,23 +97,36 @@ export class RedisRestRateLimitStore implements Store {
     restUrl: string;
     restToken: string;
     fetchImpl?: typeof fetch;
+    prefix?: string;
   }) {
     this.restUrl = params.restUrl.replace(/\/+$/, "");
     this.restToken = params.restToken;
     this.fetchImpl = params.fetchImpl ?? fetch;
+    if (params.prefix) {
+      this.prefix = params.prefix;
+    }
+  }
+
+  withPrefix(prefix: string): RedisRestRateLimitStore {
+    return new RedisRestRateLimitStore({
+      restUrl: this.restUrl,
+      restToken: this.restToken,
+      fetchImpl: this.fetchImpl,
+      prefix,
+    });
   }
 
   init(options: Options): void {
     this.windowMs = options.windowMs;
-    this.fallback.init(options);
   }
 
   async increment(key: string): Promise<ClientRateLimitInfo> {
     const scopedKey = `${this.prefix}${key}`;
+    let res: Response;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2500);
-      const res = await this.fetchImpl(`${this.restUrl}/pipeline`, {
+      res = await this.fetchImpl(`${this.restUrl}/pipeline`, {
         method: "POST",
         signal: controller.signal,
         headers: {
@@ -120,66 +140,79 @@ export class RedisRestRateLimitStore implements Store {
         ]),
       });
       clearTimeout(timer);
-
-      if (!res.ok) {
-        return this.fallback.increment(key);
-      }
-
-      const payload = (await res.json()) as Array<{ result?: number }>;
-      const totalHits = Number(payload?.[0]?.result ?? 1);
-      const pttl = Number(payload?.[2]?.result ?? this.windowMs);
-      const resetMs = pttl > 0 ? pttl : this.windowMs;
-
-      return {
-        totalHits: Number.isFinite(totalHits) ? totalHits : 1,
-        resetTime: new Date(Date.now() + resetMs),
-      };
     } catch {
-      return this.fallback.increment(key);
+      throw new DistributedRateLimitUnavailableError(
+        "Distributed Redis rate-limit store unreachable."
+      );
     }
+
+    if (!res.ok) {
+      throw new DistributedRateLimitUnavailableError(
+        `Distributed Redis rate-limit store returned HTTP ${res.status}.`
+      );
+    }
+
+    const payload = (await res.json()) as Array<{ result?: number }>;
+    const totalHits = Number(payload?.[0]?.result);
+    if (!Number.isFinite(totalHits)) {
+      throw new DistributedRateLimitUnavailableError(
+        "Distributed Redis rate-limit store returned malformed counter."
+      );
+    }
+    const pttl = Number(payload?.[2]?.result ?? this.windowMs);
+    const resetMs = Number.isFinite(pttl) && pttl > 0 ? pttl : this.windowMs;
+
+    return {
+      totalHits,
+      resetTime: new Date(Date.now() + resetMs),
+    };
   }
 
   async decrement(key: string): Promise<void> {
     const scopedKey = `${this.prefix}${key}`;
-    try {
-      await this.fetchImpl(
-        `${this.restUrl}/decr/${encodeURIComponent(scopedKey)}`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${this.restToken}` },
-        }
+    const res = await this.fetchImpl(
+      `${this.restUrl}/decr/${encodeURIComponent(scopedKey)}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.restToken}` },
+      }
+    );
+    if (!res.ok) {
+      throw new DistributedRateLimitUnavailableError(
+        `Distributed Redis rate-limit decrement failed (HTTP ${res.status}).`
       );
-    } catch {
-      await this.fallback.decrement(key);
     }
   }
 
   async resetKey(key: string): Promise<void> {
     const scopedKey = `${this.prefix}${key}`;
-    try {
-      await this.fetchImpl(
-        `${this.restUrl}/del/${encodeURIComponent(scopedKey)}`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${this.restToken}` },
-        }
+    const res = await this.fetchImpl(
+      `${this.restUrl}/del/${encodeURIComponent(scopedKey)}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.restToken}` },
+      }
+    );
+    if (!res.ok) {
+      throw new DistributedRateLimitUnavailableError(
+        `Distributed Redis rate-limit reset failed (HTTP ${res.status}).`
       );
-    } catch {
-      await this.fallback.resetKey(key);
     }
   }
 }
 
 export function createRateLimitStore(
   config: ServerConfig,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  prefix?: string
 ): Store {
   if (config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken) {
     return new RedisRestRateLimitStore({
       restUrl: config.rateLimitRedisRestUrl,
       restToken: config.rateLimitRedisRestToken,
       fetchImpl,
+      prefix,
     });
   }
-  return new MemoryRateLimitStore();
+  return new MemoryRateLimitStore({ prefix: prefix ?? "mem:" });
 }

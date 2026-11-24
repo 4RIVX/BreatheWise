@@ -26,9 +26,9 @@ const INDOOR_GUIDANCE_ITEMS = [
       "True HEPA (H13/H14) filters trap airborne particulate matter (PM2.5, PM10, allergens, combustion soot) with ≥99.97% efficiency at 0.3 microns (the most penetrating particle size). However, HEPA mechanical filters do NOT capture gaseous pollutants, VOCs, formaldehyde, ozone, or carbon monoxide (CO). Gaseous abatement requires dedicated activated carbon adsorption beds. Strictly avoid electronic ionizers, plasma generators, or ozone-generating 'air cleaners' which produce respiratory tract irritants.",
   },
   {
-    title: "Target Air Changes per Hour (Harvard Chan / ASHRAE / CDC)",
+    title: "Portable HEPA Sizing (ACH) & Timed Ventilation",
     detail:
-      "Target ACH benchmarks: 3 ACH (baseline air exchange), 4–5 ACH (Harvard T.H. Chan School of Public Health & ASHRAE 62.2 standard for healthy indoor spaces), and 6+ ACH (CDC / WHO guidance during severe wildfire smoke or severe smog inversions). Time natural cross-ventilation when ambient PM2.5 drops during midday convective mixing.",
+      "During severe outdoor smog episodes, keep exterior windows closed and size portable HEPA purifiers to deliver roughly 4–6 air changes per hour (ACH) in the closed room so fine particulate concentrations decay rapidly (note: CDC/NIOSH 'Aim for 5+' ACH guidance is an infectious-aerosol dilution target, while ASHRAE 62.2 defines minimum outdoor-air ventilation rates rather than smog filtration targets). Time natural cross-ventilation only when ambient PM2.5 drops during midday convective mixing.",
   },
 ];
 
@@ -295,7 +295,15 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                   <strong>Calculator Scope:</strong> {metrics.disclaimer}
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  <strong>Scientific Benchmarks:</strong> Sized according to Harvard T.H. Chan / ASHRAE 62.2 / CDC ventilation guidance (3–6 ACH). CADR (Clean Air Delivery Rate) measures particulate clearance volume per unit time. True HEPA captures particulate matter (≥99.97% at 0.3 µm) but requires activated carbon for gaseous VOC/odor adsorption.
+                  <strong>Scientific Scope &amp; Attribution:</strong> CADR
+                  (Clean Air Delivery Rate) measures particulate clearance
+                  volume per unit time in a well-mixed enclosed room; 3–6 ACH
+                  options here are practical purifier-sizing benchmarks for
+                  particulate decay with windows shut (not ASHRAE 62.2 outdoor
+                  ventilation rates or CDC infectious-aerosol rules). True HEPA
+                  captures particulate matter (&ge;99.97% at 0.3 &mu;m) but
+                  requires dedicated activated carbon for gaseous VOC/odor
+                  adsorption.
                 </p>
               </div>
             </div>

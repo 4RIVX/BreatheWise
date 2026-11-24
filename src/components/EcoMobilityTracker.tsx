@@ -75,7 +75,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
         originalMode: impact.originalFactor.label,
         alternativeMode: impact.alternativeFactor.label,
         journeys,
-        co2AvoidedKg: impact.co2eAvoidedKg,
+        co2AvoidedKg: impact.emissionsAvoidedKg,
         factorVersion: `${impact.originalFactor.factorVersion}/${impact.alternativeFactor.factorVersion}`,
       });
       setSaveFeedback("Commute comparison saved to your Firestore log.");
@@ -260,15 +260,17 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
         <div className="space-y-5 pt-4 border-t border-slate-200">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
             <div>
-              <p className="text-xs text-slate-500">Estimated CO2e Avoided</p>
+              <p className="text-xs text-slate-500">
+                Estimated {impact.emissionsAvoidedMetricLabel} Avoided
+              </p>
               <p
                 className={`text-3xl font-mono font-bold tabular-nums mt-1 ${
-                  impact.co2eAvoidedKg >= 0
+                  impact.emissionsAvoidedKg >= 0
                     ? "text-emerald-700"
                     : "text-amber-700"
                 }`}
               >
-                {impact.co2eAvoidedKg}{" "}
+                {impact.emissionsAvoidedKg}{" "}
                 <span className="text-xs font-normal text-slate-500">kg</span>
               </p>
               <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
@@ -289,9 +291,12 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             <div>
               <p className="text-xs text-slate-500">Baseline Mode Footprint</p>
               <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
-                {impact.originalCo2eKg}{" "}
+                {impact.originalEmissionsKg}{" "}
                 <span className="text-xs font-normal text-slate-500">
-                  kg CO2e
+                  kg{" "}
+                  {impact.originalEmissionsMetric === "ZERO"
+                    ? "CO2 / CO2e"
+                    : impact.originalEmissionsMetric}
                 </span>
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -302,9 +307,12 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             <div>
               <p className="text-xs text-slate-500">Alternative Footprint</p>
               <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
-                {impact.alternativeCo2eKg}{" "}
+                {impact.alternativeEmissionsKg}{" "}
                 <span className="text-xs font-normal text-slate-500">
-                  kg CO2e
+                  kg{" "}
+                  {impact.alternativeEmissionsMetric === "ZERO"
+                    ? "CO2 / CO2e"
+                    : impact.alternativeEmissionsMetric}
                 </span>
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -319,6 +327,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                 Original Factor · {impact.originalFactor.factorVersion} (
                 {impact.originalFactor.publicationYear})
               </p>
+              <p>Scope: {impact.originalFactor.pollutantScope}</p>
               <p>Source: {impact.originalFactor.source}</p>
               <p>Units: {impact.originalFactor.units}</p>
               <p>Region: {impact.originalFactor.geographicRelevance}</p>
@@ -330,6 +339,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                 Alternative Factor · {impact.alternativeFactor.factorVersion} (
                 {impact.alternativeFactor.publicationYear})
               </p>
+              <p>Scope: {impact.alternativeFactor.pollutantScope}</p>
               <p>Source: {impact.alternativeFactor.source}</p>
               <p>Units: {impact.alternativeFactor.units}</p>
               <p>Region: {impact.alternativeFactor.geographicRelevance}</p>
@@ -338,6 +348,9 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
           </div>
 
           <div className="space-y-1 text-xs text-slate-600">
+            {impact.scopeWarning && (
+              <p className="text-amber-800 font-medium">{impact.scopeWarning}</p>
+            )}
             <p>{impact.personalExposureDistinction}</p>
             <p>{impact.communityImpactDistinction}</p>
           </div>
@@ -360,7 +373,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                   km × {log.journeys})
                 </span>
                 <span className="font-mono tabular-nums text-emerald-700 font-semibold">
-                  {log.co2AvoidedKg} kg CO2e · {log.factorVersion}
+                  {log.co2AvoidedKg} kg GHG · {log.factorVersion}
                 </span>
               </div>
             ))}

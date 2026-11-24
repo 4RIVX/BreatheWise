@@ -31,7 +31,12 @@ import {
 } from "./services/aiOrchestrator.ts";
 import { buildServerVerifiedAirContext } from "./services/verifiedAirContextBuilder.ts";
 import { verifyAndSanitizeImage } from "./utils/imageSanitizer.ts";
-import { createRateLimitStore, MemoryRateLimitStore } from "./utils/rateLimitStore.ts";
+import {
+  createRateLimitStore,
+  DistributedRateLimitUnavailableError,
+  MemoryRateLimitStore,
+  RedisRestRateLimitStore,
+} from "./utils/rateLimitStore.ts";
 import {
   AirQualityQuerySchema,
   AskRequestSchema,
@@ -109,14 +114,20 @@ export function createApp(deps: AppDependencies = {}) {
           sharedHits: deps.rateLimitStore.hits,
           prefix: "api:",
         })
-      : (deps.rateLimitStore ?? createRateLimitStore(config, fetchImpl));
+      : deps.rateLimitStore instanceof RedisRestRateLimitStore
+        ? deps.rateLimitStore.withPrefix("bw:dist:api:")
+        : (deps.rateLimitStore ??
+          createRateLimitStore(config, fetchImpl, "bw:dist:api:"));
   const aiStore =
     deps.rateLimitStore instanceof MemoryRateLimitStore
       ? new MemoryRateLimitStore({
           sharedHits: deps.rateLimitStore.hits,
           prefix: "ai:",
         })
-      : (deps.rateLimitStore ?? createRateLimitStore(config, fetchImpl));
+      : deps.rateLimitStore instanceof RedisRestRateLimitStore
+        ? deps.rateLimitStore.withPrefix("bw:dist:ai:")
+        : (deps.rateLimitStore ??
+          createRateLimitStore(config, fetchImpl, "bw:dist:ai:"));
 
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -124,10 +135,11 @@ export function createApp(deps: AppDependencies = {}) {
     standardHeaders: "draft-7",
     legacyHeaders: false,
     store: apiStore,
+    passOnStoreError: false,
     skip: () => !limiterEnabled,
     validate: { keyGeneratorIpFallback: false },
     keyGenerator: (req, _res) =>
-      `api:${hashIdentifier(req.socket.remoteAddress || req.ip || "unknown")}`,
+      `api:${hashIdentifier(req.ip || req.socket.remoteAddress || "unknown")}`,
     message: {
       error:
         "Too many requests from this client. Please wait a minute and try again.",
@@ -167,6 +179,7 @@ export function createApp(deps: AppDependencies = {}) {
     standardHeaders: "draft-7",
     legacyHeaders: false,
     store: aiStore,
+    passOnStoreError: false,
     skip: () => !limiterEnabled,
     validate: { keyGeneratorIpFallback: false },
     keyGenerator: (req, _res) => {
@@ -174,7 +187,7 @@ export function createApp(deps: AppDependencies = {}) {
       if (caller.verifiedUid) {
         return `ai:user:${hashIdentifier(caller.verifiedUid)}`;
       }
-      return `ai:anon:${hashIdentifier(req.socket.remoteAddress || req.ip || "unknown")}`;
+      return `ai:anon:${hashIdentifier(req.ip || req.socket.remoteAddress || "unknown")}`;
     },
     message: {
       error:
@@ -515,6 +528,13 @@ export function createApp(deps: AppDependencies = {}) {
 
   // Safe JSON error handler (never leaks stack traces)
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof DistributedRateLimitUnavailableError) {
+      res.status(503).json({
+        error: "Rate-limit enforcement temporarily unavailable.",
+        code: "RATE_LIMIT_STORE_UNAVAILABLE",
+      });
+      return;
+    }
     if (err.message.includes("CORS")) {
       res.status(403).json({ error: "Origin not permitted." });
       return;

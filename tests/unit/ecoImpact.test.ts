@@ -19,7 +19,7 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
     }
   });
 
-  it("calculates CO2e avoided and trips displaced when shifting from petrol car to metro rail", () => {
+  it("calculates mixed-scope CO2 / CO2e avoided and warns when shifting from petrol car to metro rail", () => {
     const res = calculateEcoImpact({
       distanceKm: 10,
       originalMode: "car_petrol",
@@ -29,16 +29,37 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
     });
 
     expect(res.totalDistanceKm).toBe(200);
-    expect(res.originalCo2eKg).toBe(34.2);
-    expect(res.alternativeCo2eKg).toBe(4.8);
-    expect(res.co2eAvoidedKg).toBe(29.4);
+    expect(res.originalEmissionsKg).toBe(34.2);
+    expect(res.originalEmissionsMetric).toBe("CO2e");
+    expect(res.alternativeEmissionsKg).toBe(4.8);
+    expect(res.alternativeEmissionsMetric).toBe("CO2");
+    expect(res.emissionsAvoidedKg).toBe(29.4);
+    expect(res.emissionsAvoidedMetricLabel).toBe("CO2 / CO2e (mixed scope)");
+    expect(res.scopeWarning).toContain("cross-scope comparison");
     expect(res.vehicleTripsAvoided).toBe(20);
     expect(res.communityImpactDistinction).toContain(
       "Individual commute changes alone"
     );
   });
 
-  it("scales per-passenger CO2e and vehicle trips avoided when carpooling", () => {
+  it("tracks city_bus_diesel as CO2-only (0.015161 kg CO2/p-km) with explicit scope metadata", () => {
+    const busFactor = EMISSION_FACTORS_INDIA.city_bus_diesel;
+    expect(busFactor.kgEmissionsPerPassengerKm).toBe(0.015161);
+    expect(busFactor.ghgMetric).toBe("CO2");
+    expect(busFactor.units).toContain("kg CO2");
+
+    const res = calculateEcoImpact({
+      distanceKm: 20,
+      originalMode: "car_petrol",
+      alternativeMode: "city_bus_diesel",
+      journeys: 5,
+    });
+    expect(res.alternativeEmissionsMetric).toBe("CO2");
+    expect(res.emissionsAvoidedMetricLabel).toBe("CO2 / CO2e (mixed scope)");
+    expect(res.scopeWarning).not.toBeNull();
+  });
+
+  it("scales per-passenger CO2e and vehicle trips avoided when carpooling without mixed-scope warning", () => {
     const res = calculateEcoImpact({
       distanceKm: 10,
       originalMode: "car_petrol",
@@ -48,9 +69,11 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
       journeys: 10,
     });
 
-    expect(res.originalCo2eKg).toBe(17.1);
-    expect(res.alternativeCo2eKg).toBe(8.55);
-    expect(res.co2eAvoidedKg).toBe(8.55);
+    expect(res.originalEmissionsKg).toBe(17.1);
+    expect(res.alternativeEmissionsKg).toBe(8.55);
+    expect(res.emissionsAvoidedKg).toBe(8.55);
+    expect(res.emissionsAvoidedMetricLabel).toBe("CO2e");
+    expect(res.scopeWarning).toBeNull();
     expect(res.vehicleTripsAvoided).toBe(5);
   });
 
@@ -62,7 +85,9 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
       journeys: 4,
     });
 
-    expect(res.alternativeCo2eKg).toBe(0);
+    expect(res.alternativeEmissionsKg).toBe(0);
+    expect(res.alternativeEmissionsMetric).toBe("ZERO");
+    expect(res.emissionsAvoidedMetricLabel).toBe("CO2e");
     expect(res.personalExposureDistinction).toContain("N95/FFP2");
   });
 

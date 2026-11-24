@@ -3,6 +3,7 @@ import {
   calculateIndianAqi,
   calculatePollutantSubIndex,
   computeRollingAverage,
+  computeTimeBoundedRollingAverage,
   getIndianAqiCategory,
   isDataStale,
   normalizePollutantConcentration,
@@ -199,5 +200,51 @@ describe("Indian National AQI Methodology (CPCB)", () => {
     const stale = isDataStale("2026-01-15T06:00:00Z", now, 180);
     expect(stale.stale).toBe(true);
     expect(stale.ageMinutes).toBe(360);
+  });
+
+  it("refuses to calculate official AQI when sampleHoursCount is omitted", () => {
+    const result = calculateIndianAqi([
+      {
+        code: "PM2.5",
+        concentration: 65,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+      },
+      {
+        code: "PM10",
+        concentration: 110,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+      },
+      {
+        code: "NO2",
+        concentration: 45,
+        unit: "ug/m3",
+        averagingPeriodHours: 24,
+      },
+    ]);
+
+    expect(result.calculable).toBe(false);
+    expect(result.validPollutantCount).toBe(0);
+    expect(result.reasonIfNotCalculable).toContain("missing hourly observation count");
+  });
+
+  it("computes time-bounded rolling averages strictly within windowHours despite gaps", () => {
+    const samples = [
+      // Too old (6 hours before 12:00 when window is 4 hours: 09:00..12:00)
+      { timeIso: "2026-03-01T06:00:00+05:30", value: 999 },
+      { timeIso: "2026-03-01T08:00:00+05:30", value: 500 },
+      // Inside [09:00, 12:00] window with a gap at 10:00
+      { timeIso: "2026-03-01T09:00:00+05:30", value: 30 },
+      { timeIso: "2026-03-01T11:00:00+05:30", value: 50 },
+      { timeIso: "2026-03-01T12:00:00+05:30", value: 40 },
+    ];
+    const bounded = computeTimeBoundedRollingAverage(
+      samples,
+      "2026-03-01T12:00:00+05:30",
+      4
+    );
+    expect(bounded.validCount).toBe(3);
+    expect(bounded.mean).toBe(40);
   });
 });

@@ -3,9 +3,24 @@ import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../server/app";
 import { loadServerConfig, type ServerConfig } from "../../server/config";
-import { MemoryRateLimitStore } from "../../server/utils/rateLimitStore";
+import {
+  MemoryRateLimitStore,
+  RedisRestRateLimitStore,
+} from "../../server/utils/rateLimitStore";
 import { clearCpcbCache } from "../../server/providers/cpcbProvider";
 import { clearOpenMeteoCache } from "../../server/providers/openMeteoProvider";
+
+function recentCpcbIstString(minutesAgo = 20): string {
+  const istMs = Date.now() - minutesAgo * 60_000 + 5.5 * 3_600_000;
+  const d = new Date(istMs);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const min = String(d.getUTCMinutes()).padStart(2, "0");
+  const ss = String(d.getUTCSeconds()).padStart(2, "0");
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
+}
 
 const BASE_CONFIG: ServerConfig = {
   port: 3000,
@@ -44,19 +59,22 @@ async function makeRealPngWithExifDataUrl(): Promise<string> {
 }
 
 function buildSampleCpcbResponse() {
+  const freshUpdate = recentCpcbIstString(20);
   return {
     status: "ok",
+    total: 3,
     records: [
       {
         country: "India",
         state: "Tamil Nadu",
         city: "Chennai",
         station: "Velachery Res. Area, Chennai - CPCB",
-        last_update: "15-01-2026 10:00:00",
+        last_update: freshUpdate,
         latitude: "12.98",
         longitude: "80.22",
         pollutant_id: "PM2.5",
         pollutant_avg: "58",
+        sample_hours: 24,
         pollutant_unit: "ug/m3",
       },
       {
@@ -64,9 +82,10 @@ function buildSampleCpcbResponse() {
         state: "Tamil Nadu",
         city: "Chennai",
         station: "Velachery Res. Area, Chennai - CPCB",
-        last_update: "15-01-2026 10:00:00",
+        last_update: freshUpdate,
         pollutant_id: "PM10",
         pollutant_avg: "92",
+        sample_hours: 24,
         pollutant_unit: "ug/m3",
       },
       {
@@ -74,9 +93,10 @@ function buildSampleCpcbResponse() {
         state: "Tamil Nadu",
         city: "Chennai",
         station: "Velachery Res. Area, Chennai - CPCB",
-        last_update: "15-01-2026 10:00:00",
+        last_update: freshUpdate,
         pollutant_id: "NO2",
         pollutant_avg: "34",
+        sample_hours: 24,
         pollutant_unit: "ug/m3",
       },
     ],
@@ -737,5 +757,74 @@ describe("Express API Integration & Security Tests", () => {
       .post("/api/gemini/guidance")
       .send(payload);
     expect(authFail.status).toBe(401);
+  });
+
+  it("keys rate limits by X-Forwarded-For client IP behind trust proxy and fails closed with 503 when Redis is unavailable", async () => {
+    const sharedStore = new MemoryRateLimitStore();
+    const proxyApp = createApp({
+      config: { ...BASE_CONFIG, geminiApiKey: "k" },
+      geminiClient: {
+        models: {
+          generateContent: async () => ({
+            text: JSON.stringify(VALID_GUIDANCE_SAMPLE),
+          }),
+        },
+      },
+      fetchImpl: createEnvMockFetch(),
+      enableRateLimit: true,
+      rateLimitMax: 1,
+      rateLimitStore: sharedStore,
+    });
+
+    const payload = {
+      location: { city: "Chennai", latitude: 13.08, longitude: 80.27 },
+      household: { profileId: "general" },
+    };
+
+    // First client IP gets 200 once, then 429
+    const c1a = await request(proxyApp)
+      .post("/api/gemini/guidance")
+      .set("X-Forwarded-For", "203.0.113.10")
+      .send(payload);
+    const c1b = await request(proxyApp)
+      .post("/api/gemini/guidance")
+      .set("X-Forwarded-For", "203.0.113.10")
+      .send(payload);
+    // Distinct client IP behind same Cloud Run proxy has its own bucket -> 200
+    const c2a = await request(proxyApp)
+      .post("/api/gemini/guidance")
+      .set("X-Forwarded-For", "198.51.100.77")
+      .send(payload);
+
+    expect(c1a.status).toBe(200);
+    expect(c1b.status).toBe(429);
+    expect(c2a.status).toBe(200);
+
+    // RedisRestRateLimitStore must fail closed with HTTP 503 (never silent memory fallback)
+    const failingRedisStore = new RedisRestRateLimitStore({
+      restUrl: "https://redis.invalid",
+      restToken: "token",
+      fetchImpl: async () => new Response("redis down", { status: 500 }),
+    });
+    const redisFailApp = createApp({
+      config: { ...BASE_CONFIG, geminiApiKey: "k" },
+      geminiClient: {
+        models: {
+          generateContent: async () => ({
+            text: JSON.stringify(VALID_GUIDANCE_SAMPLE),
+          }),
+        },
+      },
+      fetchImpl: createEnvMockFetch(),
+      enableRateLimit: true,
+      rateLimitMax: 5,
+      rateLimitStore: failingRedisStore,
+    });
+
+    const failClosedRes = await request(redisFailApp)
+      .post("/api/gemini/guidance")
+      .send(payload);
+    expect(failClosedRes.status).toBe(503);
+    expect(failClosedRes.body.code).toBe("RATE_LIMIT_STORE_UNAVAILABLE");
   });
 });
