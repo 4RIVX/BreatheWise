@@ -100,7 +100,7 @@ function parseAllowedOrigins(
 export function loadServerConfig(
   env: Record<string, string | undefined> = process.env
 ): ServerConfig {
-  const nodeEnv = (env.NODE_ENV ?? "development").trim() || "development";
+  const nodeEnv = (env.NODE_ENV ?? "production").trim() || "production";
   const aiProvider = parseAiProvider(env.AI_PROVIDER);
   const aiFallbackProvider = parseAiFallbackProvider(
     env.AI_FALLBACK_PROVIDER,
