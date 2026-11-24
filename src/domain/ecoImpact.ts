@@ -21,7 +21,11 @@ export interface EmissionFactorRecord {
   supportsOccupancy: boolean;
   isPrivateMotorizedVehicle: boolean;
   source: string;
+  sourceUrl: string;
+  publisher: string;
   publicationYear: number;
+  pageOrTableRef: string;
+  pollutantScope: string;
   units: string;
   calculationMethod: string;
   geographicRelevance: string;
@@ -43,7 +47,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
     source: "India GHG Program (WRI India / CII / TERI) — Road Transport v2.0",
+    sourceUrl: "https://www.indiaghgprogram.org/",
+    publisher: "WRI India, CII & TERI",
     publicationYear: 2015,
+    pageOrTableRef: "Table 4.2, Road Transport Emission Factors",
+    pollutantScope: "CO2e (Tank-to-Wheel)",
     units: "kg CO2e per vehicle-km (divided by occupancy)",
     calculationMethod:
       "Tank-to-Wheel distance-based average passenger car factor",
@@ -62,7 +70,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
     source: "India GHG Program (WRI India / CII / TERI) — Road Transport v2.0",
+    sourceUrl: "https://www.indiaghgprogram.org/",
+    publisher: "WRI India, CII & TERI",
     publicationYear: 2015,
+    pageOrTableRef: "Table 4.3, Diesel Passenger Vehicles",
+    pollutantScope: "CO2e (Tank-to-Wheel)",
     units: "kg CO2e per vehicle-km (divided by occupancy)",
     calculationMethod: "Tank-to-Wheel distance-based average diesel car factor",
     geographicRelevance: "India urban passenger fleet",
@@ -80,7 +92,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
     source: "India GHG Program (WRI India) — CNG Passenger Vehicle Factor",
+    sourceUrl: "https://www.indiaghgprogram.org/",
+    publisher: "WRI India",
     publicationYear: 2015,
+    pageOrTableRef: "Table 4.5, CNG Fleet Factors",
+    pollutantScope: "CO2e (Tank-to-Wheel)",
     units: "kg CO2e per vehicle-km (divided by occupancy)",
     calculationMethod: "Tank-to-Wheel distance-based CNG passenger factor",
     geographicRelevance: "Indian metro cities (Delhi NCR, Mumbai, Ahmedabad)",
@@ -98,7 +114,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     isPrivateMotorizedVehicle: true,
     source:
       "CEA CO2 Baseline Database for Indian Power Sector v19.0 + ARAI EV consumption (~0.16 kWh/km)",
+    sourceUrl: "https://cea.nic.in/co2-baseline-database/",
+    publisher: "Central Electricity Authority (CEA) India & ARAI",
     publicationYear: 2023,
+    pageOrTableRef: "Table 1.1 (All-India Grid Average) & ARAI EV Test Benchmark",
+    pollutantScope: "CO2 (Grid Generation)",
     units: "kg CO2e per vehicle-km (grid-weighted, divided by occupancy)",
     calculationMethod:
       "Average Indian grid weighted emission factor (0.716 kg CO2/kWh) × 0.16 kWh/km",
@@ -117,7 +137,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: true,
     source: "India GHG Program (WRI India) — Two-Wheeler Fleet Average",
+    sourceUrl: "https://www.indiaghgprogram.org/",
+    publisher: "WRI India",
     publicationYear: 2015,
+    pageOrTableRef: "Table 5.1, Two-Wheeler Factors",
+    pollutantScope: "CO2e (Tank-to-Wheel)",
     units: "kg CO2e per vehicle-km (divided by occupancy)",
     calculationMethod: "Tank-to-Wheel Indian two-wheeler average (100–150cc)",
     geographicRelevance: "India urban commuting fleet",
@@ -135,7 +159,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: true,
     isPrivateMotorizedVehicle: false,
     source: "India GHG Program / WRI India — Three-Wheeler Urban Factor",
+    sourceUrl: "https://www.indiaghgprogram.org/",
+    publisher: "WRI India",
     publicationYear: 2015,
+    pageOrTableRef: "Table 5.4, Three-Wheeler CNG",
+    pollutantScope: "CO2e (Tank-to-Wheel)",
     units: "kg CO2e per vehicle-km (divided by passenger occupancy)",
     calculationMethod: "Tank-to-Wheel distance-based CNG three-wheeler factor",
     geographicRelevance: "Indian urban corridors",
@@ -153,7 +181,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source: "India GHG Program (WRI India) / ASRTU Public Bus Benchmark",
+    sourceUrl: "https://www.indiaghgprogram.org/",
+    publisher: "WRI India & ASRTU",
     publicationYear: 2015,
+    pageOrTableRef: "Table 6.1, Public Transit Bus Benchmarks",
+    pollutantScope: "CO2e (Tank-to-Wheel per Passenger-km)",
     units: "kg CO2e per passenger-km",
     calculationMethod:
       "Average urban bus emissions divided by typical 35-passenger load",
@@ -173,7 +205,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     isPrivateMotorizedVehicle: false,
     source:
       "CEA CO2 Baseline v19.0 + FAME-II Urban E-Bus Benchmark (~0.88 kWh/km)",
+    sourceUrl: "https://cea.nic.in/co2-baseline-database/",
+    publisher: "CEA India & FAME-II",
     publicationYear: 2023,
+    pageOrTableRef: "Table 1.1 Grid Factor + E-Bus Energy Benchmarks",
+    pollutantScope: "CO2 (Grid Generation per Passenger-km)",
     units: "kg CO2e per passenger-km",
     calculationMethod:
       "Grid factor (0.716 kg/kWh) × 0.88 kWh/km ÷ 35 avg passengers",
@@ -192,7 +228,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source: "DMRC / CEA Grid Emission Baseline (0.716 kg CO2/kWh)",
+    sourceUrl: "https://www.delhimetrorail.com/",
+    publisher: "Delhi Metro Rail Corporation (DMRC) & CEA",
     publicationYear: 2023,
+    pageOrTableRef: "DMRC Sustainability Report & CEA Grid Baseline v19",
+    pollutantScope: "CO2 (Traction & Station Power)",
     units: "kg CO2e per passenger-km",
     calculationMethod:
       "Traction & station electricity per passenger-km on Indian metro networks",
@@ -212,7 +252,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source: "India GHG Program / Indian Railways Suburban Passenger Factor",
+    sourceUrl: "https://indianrailways.gov.in/",
+    publisher: "Indian Railways & WRI India",
     publicationYear: 2015,
+    pageOrTableRef: "Table 7.2, Suburban EMU Energy Consumption",
+    pollutantScope: "CO2e (Electric Traction per Passenger-km)",
     units: "kg CO2e per passenger-km",
     calculationMethod: "High-occupancy electric multiple unit traction factor",
     geographicRelevance: "Mumbai, Chennai, Kolkata suburban networks",
@@ -229,7 +273,11 @@ export const EMISSION_FACTORS_INDIA: Record<
     supportsOccupancy: false,
     isPrivateMotorizedVehicle: false,
     source: "IPCC 2006 / Zero Direct Operational Tailpipe Emissions",
+    sourceUrl: "https://www.ipcc-nggip.iges.or.jp/",
+    publisher: "Intergovernmental Panel on Climate Change (IPCC)",
     publicationYear: 2006,
+    pageOrTableRef: "Volume 2 (Energy), Chapter 3 (Mobile Combustion)",
+    pollutantScope: "Zero Direct GHG Emissions",
     units: "kg CO2e per passenger-km",
     calculationMethod: "Zero direct fuel combustion or grid electricity draw",
     geographicRelevance: "Universal",
@@ -318,7 +366,6 @@ export function calculateEcoImpact(input: EcoImpactInput): EcoImpactResult {
     alternativeMode === originalMode &&
     alternativeOccupancy > originalOccupancy
   ) {
-    // Carpool trip reduction estimate
     const ratio = 1 - originalOccupancy / alternativeOccupancy;
     vehicleTripsAvoided = Number((journeys * ratio).toFixed(1));
   }
@@ -344,6 +391,6 @@ export function calculateEcoImpact(input: EcoImpactInput): EcoImpactResult {
     alternativeFactor,
     personalExposureDistinction,
     communityImpactDistinction,
-    methodologyNote: `Computed using ${originalFactor.factorVersion} (${originalFactor.publicationYear}) vs ${alternativeFactor.factorVersion} (${alternativeFactor.publicationYear}).`,
+    methodologyNote: `Computed using ${originalFactor.factorVersion} (${originalFactor.publicationYear}; Publisher: ${originalFactor.publisher}) vs ${alternativeFactor.factorVersion} (${alternativeFactor.publicationYear}; Publisher: ${alternativeFactor.publisher}).`,
   };
 }

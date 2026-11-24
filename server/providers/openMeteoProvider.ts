@@ -298,18 +298,24 @@ export async function fetchOpenMeteoForecast(params: {
     );
     let bestLowerPmWindow: string | null = null;
     if (futurePoints.length >= 2) {
-      let bestIdx = 0;
+      let bestIdx = -1;
       let bestVal = Infinity;
       for (let i = 0; i < futurePoints.length - 1; i += 1) {
-        const avg2h =
-          ((futurePoints[i].pm25 ?? 999) + (futurePoints[i + 1].pm25 ?? 999)) /
-          2;
-        if (avg2h < bestVal) {
-          bestVal = avg2h;
-          bestIdx = i;
+        const t1 = new Date(futurePoints[i].timeIso).getTime();
+        const t2 = new Date(futurePoints[i + 1].timeIso).getTime();
+        if (t2 - t1 === 3600000) {
+          const avg2h =
+            ((futurePoints[i].pm25 ?? 999) + (futurePoints[i + 1].pm25 ?? 999)) /
+            2;
+          if (avg2h < bestVal) {
+            bestVal = avg2h;
+            bestIdx = i;
+          }
         }
       }
-      bestLowerPmWindow = `${futurePoints[bestIdx].hourLabel}–${futurePoints[bestIdx + 1].hourLabel} IST`;
+      if (bestIdx !== -1) {
+        bestLowerPmWindow = `${futurePoints[bestIdx].hourLabel}–${futurePoints[bestIdx + 1].hourLabel} IST`;
+      }
     }
 
     const currentTimeIso = aq.current?.time

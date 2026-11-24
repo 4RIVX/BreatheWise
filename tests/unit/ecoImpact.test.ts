@@ -8,6 +8,10 @@ describe("India Mobility Emission Factors & Eco Impact", () => {
   it("exposes documented source, year, units, and limitations for every transport mode", () => {
     for (const factor of Object.values(EMISSION_FACTORS_INDIA)) {
       expect(factor.source.length).toBeGreaterThan(5);
+      expect(factor.sourceUrl.startsWith("https://")).toBe(true);
+      expect(factor.publisher.length).toBeGreaterThan(3);
+      expect(factor.pageOrTableRef.length).toBeGreaterThan(3);
+      expect(factor.pollutantScope.length).toBeGreaterThan(3);
       expect(factor.publicationYear).toBeGreaterThanOrEqual(2006);
       expect(factor.units.length).toBeGreaterThan(5);
       expect(factor.limitations.length).toBeGreaterThan(5);

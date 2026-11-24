@@ -12,6 +12,9 @@ import {
   sanitizeFirestorePath,
   sanitizeOperationalText,
 } from "../../src/firebase/errorHandling";
+import { DEFAULT_CLEAN_AIR_ROUTINES } from "../../src/domain/defaultRoutines";
+import { normalizeCpcbRecords } from "../../server/providers/cpcbProvider";
+import { buildServerVerifiedAirContext } from "../../server/services/verifiedAirContextBuilder";
 
 vi.mock("../../src/firebase/config", () => ({
   auth: {
@@ -174,5 +177,125 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it("verifies sharp dependency is declared in package.json", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")
+    );
+    expect(pkg.dependencies.sharp).toBeDefined();
+    expect(pkg.dependencies.sharp).toMatch(/^\^?0\.33/);
+  });
+
+  it("ensures default clean-air routines do not contain arbitrary uncalculated CO2 savings", () => {
+    for (const routine of DEFAULT_CLEAN_AIR_ROUTINES) {
+      expect(routine.co2SavedKg).toBe(0.0);
+    }
+  });
+
+  it("conditionally rejects CPCB averaging when values are inconsistent or physically implausible", () => {
+    const stations = normalizeCpcbRecords([
+      {
+        station: "Test Station Corrupt",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "PM2.5",
+        pollutant_avg: "80",
+        pollutant_min: "120", // min > max (corrupted)
+        pollutant_max: "60",
+        last_update: "20-01-2026 12:00:00",
+      },
+      {
+        station: "Test Station Valid",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "PM2.5",
+        pollutant_avg: "80",
+        pollutant_min: "40",
+        pollutant_max: "120",
+        last_update: "20-01-2026 12:00:00",
+      },
+    ]);
+
+    const corrupt = stations.find((s) => s.stationName === "Test Station Corrupt");
+    const valid = stations.find((s) => s.stationName === "Test Station Valid");
+
+    expect(corrupt).toBeDefined();
+    expect(valid).toBeDefined();
+    // Corrupt record has invalid averaging markers
+    expect(corrupt?.indianAqi.calculable).toBe(false);
+  });
+
+  it("ranks stations by calculable AQI, freshness, and geographic proximity", async () => {
+    const mockFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("api.data.gov.in")) {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            records: [
+              {
+                station: "Far Away Station",
+                city: "Bengaluru",
+                state: "Karnataka",
+                latitude: 13.5,
+                longitude: 78.0,
+                pollutant_id: "PM2.5",
+                pollutant_avg: "50",
+                last_update: "15-01-2026 12:00:00",
+              },
+              {
+                station: "Close Station",
+                city: "Bengaluru",
+                state: "Karnataka",
+                latitude: 12.98,
+                longitude: 77.6,
+                pollutant_id: "PM2.5",
+                pollutant_avg: "55",
+                last_update: "15-01-2026 12:00:00",
+              },
+              {
+                station: "Close Station",
+                city: "Bengaluru",
+                state: "Karnataka",
+                latitude: 12.98,
+                longitude: 77.6,
+                pollutant_id: "PM10",
+                pollutant_avg: "90",
+                last_update: "15-01-2026 12:00:00",
+              },
+              {
+                station: "Close Station",
+                city: "Bengaluru",
+                state: "Karnataka",
+                latitude: 12.98,
+                longitude: 77.6,
+                pollutant_id: "NO2",
+                pollutant_avg: "30",
+                last_update: "15-01-2026 12:00:00",
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ status: "unavailable" }), {
+        status: 503,
+      });
+    };
+
+    const result = await buildServerVerifiedAirContext({
+      location: {
+        city: "Bengaluru",
+        state: "Karnataka",
+        latitude: 12.97,
+        longitude: 77.59,
+      },
+      dataGovInApiKey: "test-key",
+      fetchImpl: mockFetch,
+    });
+
+    expect(result.airContext.measuredStationName).toBe("Close Station");
+    expect(result.airContext.measuredAqi).toBeGreaterThan(0);
   });
 });

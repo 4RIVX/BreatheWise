@@ -180,22 +180,34 @@ export function normalizeCpcbRecords(
   const stations: CpcbStationMeasurement[] = [];
   for (const entry of stationMap.values()) {
     const aqiInputs: PollutantConcentrationInput[] = [];
+    const staleInfo = entry.lastUpdatedIso
+      ? isDataStale(entry.lastUpdatedIso, now, 180)
+      : { stale: true, ageMinutes: null };
+
     for (const p of entry.pollutants) {
       if (p.avg === null || p.avg < 0) continue;
-      // CPCB reports CO in mg/m3 (already CPCB standard), others in ug/m3
       const normalizedUnit = p.code === "CO" ? "mg/m3" : "ug/m3";
+      const expectedPeriod = getExpectedAveragingPeriod(p.code);
+      const hasPhysicallyPlausibleValue =
+        Number.isFinite(p.avg) &&
+        p.avg >= 0 &&
+        (p.code === "CO" ? p.avg <= 100 : p.avg <= 2000);
+      const hasConsistentMinMax =
+        p.min !== null && p.max !== null
+          ? p.min <= p.avg && p.avg <= p.max
+          : true;
+      const hasValidTimestamp = Boolean(entry.lastUpdatedIso || entry.lastUpdatedRaw);
+      const isPeriodValid =
+        hasPhysicallyPlausibleValue && hasConsistentMinMax && hasValidTimestamp;
+
       aqiInputs.push({
         code: p.code,
         concentration: p.avg,
         unit: normalizedUnit,
-        averagingPeriodHours: getExpectedAveragingPeriod(p.code),
-        isAveragedPeriodValid: true,
+        averagingPeriodHours: expectedPeriod,
+        isAveragedPeriodValid: isPeriodValid,
       });
     }
-
-    const staleInfo = entry.lastUpdatedIso
-      ? isDataStale(entry.lastUpdatedIso, now, 180)
-      : { stale: true, ageMinutes: null };
 
     stations.push({
       stationName: entry.stationName,
@@ -245,51 +257,50 @@ export async function fetchCpcbStations(params: {
     return { ...cached.value, cached: true };
   }
 
-  const url = new URL(CPCB_BASE_URL);
-  url.searchParams.set("api-key", apiKey);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("limit", "100");
-  url.searchParams.set("filters[city]", city);
-  if (state) {
-    url.searchParams.set("filters[state]", state);
-  }
-
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetchImpl(url.toString(), {
-      signal: controller.signal,
-      headers: { Accept: "application/json" },
-    });
-    clearTimeout(timer);
+    const allRecords: z.infer<typeof CpcbRecordSchema>[] = [];
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
 
-    if (!res.ok) {
-      return {
-        status: "unavailable",
-        reason: "UPSTREAM_ERROR",
-        message: `CPCB / data.gov.in returned HTTP ${res.status}. Live monitoring-station readings are temporarily unavailable.`,
-        resourceId: CPCB_RESOURCE_ID,
-        stations: [],
-        cached: false,
-        fetchedAtIso,
-      };
+    while (hasMore && offset < 500) {
+      const url = new URL(CPCB_BASE_URL);
+      url.searchParams.set("api-key", apiKey);
+      url.searchParams.set("format", "json");
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("offset", String(offset));
+      url.searchParams.set("filters[city]", city);
+      if (state) {
+        url.searchParams.set("filters[state]", state);
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetchImpl(url.toString(), {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        break;
+      }
+
+      const rawJson = await res.json();
+      const parsed = CpcbApiResponseSchema.safeParse(rawJson);
+      if (!parsed.success || !parsed.data.records.length) {
+        break;
+      }
+
+      allRecords.push(...parsed.data.records);
+      if (parsed.data.records.length < limit) {
+        hasMore = false;
+      } else {
+        offset += limit;
+      }
     }
 
-    const rawJson = await res.json();
-    const parsed = CpcbApiResponseSchema.safeParse(rawJson);
-    if (!parsed.success) {
-      return {
-        status: "unavailable",
-        reason: "UPSTREAM_ERROR",
-        message: "CPCB API response schema could not be verified.",
-        resourceId: CPCB_RESOURCE_ID,
-        stations: [],
-        cached: false,
-        fetchedAtIso,
-      };
-    }
-
-    const stations = normalizeCpcbRecords(parsed.data.records);
+    const stations = normalizeCpcbRecords(allRecords);
     if (stations.length === 0) {
       const noDataResult: CpcbProviderResponse = {
         status: "unavailable",

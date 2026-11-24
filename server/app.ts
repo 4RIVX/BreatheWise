@@ -140,7 +140,7 @@ export function createApp(deps: AppDependencies = {}) {
   ) => {
     const decoded = await verifyTokenFn(req.headers.authorization);
     req.verifiedUid =
-      decoded && decoded.email_verified !== false ? decoded.uid : null;
+      decoded && decoded.email_verified === true ? decoded.uid : null;
 
     if (config.requireAiAuth && !req.verifiedUid) {
       res.status(401).json({
@@ -471,7 +471,7 @@ export function createApp(deps: AppDependencies = {}) {
         });
         return;
       }
-      if (decoded.email_verified === false) {
+      if (decoded.email_verified !== true) {
         res.status(403).json({
           error:
             "A verified email account is required to upload observation photos.",

@@ -40,16 +40,86 @@ export async function buildServerVerifiedAirContext(params: {
       }),
     ]);
 
-  const matchedStation =
-    cpcb.status === "available" && cpcb.stations.length > 0
-      ? ((location.preferredStationName
-          ? cpcb.stations.find(
-              (s) =>
-                s.stationName.toLowerCase() ===
-                location.preferredStationName?.trim().toLowerCase()
-            )
-          : undefined) ?? cpcb.stations[0])
-      : null;
+  function calculateDistanceKm(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  const matchedStation = (() => {
+    if (cpcb.status !== "available" || cpcb.stations.length === 0) return null;
+
+    const candidateStations = cpcb.stations.filter(
+      (s) => s.indianAqi.calculable || s.pollutants.length > 0
+    );
+
+    if (candidateStations.length === 0) return null;
+
+    if (location.preferredStationName) {
+      const preferred = candidateStations.find(
+        (s) =>
+          s.stationName.toLowerCase() ===
+          location.preferredStationName?.trim().toLowerCase()
+      );
+      if (preferred) return preferred;
+    }
+
+    const ranked = [...candidateStations].sort((a, b) => {
+      // 1. Calculable AQI priority
+      if (a.indianAqi.calculable !== b.indianAqi.calculable) {
+        return a.indianAqi.calculable ? -1 : 1;
+      }
+      // 2. Freshness priority (non-stale first)
+      if (a.stale !== b.stale) {
+        return a.stale ? 1 : -1;
+      }
+      // 3. Proximity distance
+      if (
+        typeof a.latitude === "number" &&
+        typeof a.longitude === "number" &&
+        typeof b.latitude === "number" &&
+        typeof b.longitude === "number" &&
+        typeof location.latitude === "number" &&
+        typeof location.longitude === "number"
+      ) {
+        const distA = calculateDistanceKm(
+          location.latitude,
+          location.longitude,
+          a.latitude,
+          a.longitude
+        );
+        const distB = calculateDistanceKm(
+          location.latitude,
+          location.longitude,
+          b.latitude,
+          b.longitude
+        );
+        if (Math.abs(distA - distB) > 0.5) {
+          return distA - distB;
+        }
+      }
+      // 4. Age in minutes
+      const ageA = a.ageMinutes ?? Infinity;
+      const ageB = b.ageMinutes ?? Infinity;
+      if (ageA !== ageB) return ageA - ageB;
+
+      // 5. Pollutant coverage count
+      return b.pollutants.length - a.pollutants.length;
+    });
+
+    return ranked[0] ?? null;
+  })();
 
   const measuredAvailable = Boolean(matchedStation);
   const modelledAvailable = openMeteo.status === "available";

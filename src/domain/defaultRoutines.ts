@@ -8,7 +8,7 @@ export const DEFAULT_CLEAN_AIR_ROUTINES: FirestoreRoutineItem[] = [
     description:
       "Shift solo private vehicle commute trips onto electrified rail or public bus corridors.",
     category: "Mobility",
-    co2SavedKg: 2.1,
+    co2SavedKg: 0.0, // Calculated dynamically when distance and transport mode parameters are provided
     exposureNote:
       "Reduces roadside exhaust contribution and avoids direct traffic tailpipe exposure in AC metro.",
     completedToday: false,
@@ -21,7 +21,7 @@ export const DEFAULT_CLEAN_AIR_ROUTINES: FirestoreRoutineItem[] = [
     description:
       "Combine multiple short errands into a single warm-engine trip or share rides.",
     category: "Mobility",
-    co2SavedKg: 1.4,
+    co2SavedKg: 0.0,
     exposureNote:
       "Avoids repeated cold-start catalytic converter inefficiencies.",
     completedToday: false,
@@ -34,7 +34,7 @@ export const DEFAULT_CLEAN_AIR_ROUTINES: FirestoreRoutineItem[] = [
     description:
       "Switch off vehicle ignition during stops exceeding 30 seconds.",
     category: "Community",
-    co2SavedKg: 0.4,
+    co2SavedKg: 0.0,
     exposureNote:
       "Prevents concentrated NO2 and particulate accumulation near pedestrian waiting zones.",
     completedToday: false,
@@ -60,7 +60,7 @@ export const DEFAULT_CLEAN_AIR_ROUTINES: FirestoreRoutineItem[] = [
     description:
       "Choose LPG/induction cooking and electric heating instead of solid biomass or open fires.",
     category: "Energy",
-    co2SavedKg: 1.8,
+    co2SavedKg: 0.0,
     exposureNote:
       "Avoids intense indoor smoke and black carbon generation inside living spaces.",
     completedToday: false,
@@ -73,7 +73,7 @@ export const DEFAULT_CLEAN_AIR_ROUTINES: FirestoreRoutineItem[] = [
     description:
       "Dispose garden trimmings and household waste via municipal collection or composting.",
     category: "Waste",
-    co2SavedKg: 1.2,
+    co2SavedKg: 0.0,
     exposureNote:
       "Prevents toxic smouldering smoke plumes in residential neighbourhoods.",
     completedToday: false,
