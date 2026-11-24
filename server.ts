@@ -20,7 +20,7 @@ async function startServer() {
       app.use(express.static(distPath));
     }
 
-    app.get("*", (req, res) => {
+    app.get(/(.*)/, (req, res) => {
       if (req.path.startsWith("/api/")) {
         res.status(404).json({ error: "API endpoint not found" });
         return;
