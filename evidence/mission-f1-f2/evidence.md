@@ -49,11 +49,13 @@ Firebase Project: `data-blend-vc62s` / `ai-studio-breathewise-0d124cc1-42ec-406c
 9. **CPCB Station Selection & Freshness Ranking**:
    - Implemented multi-criteria ranking in `verifiedAirContextBuilder.ts`: stations with calculable AQI, fresh measurements (< 180 min), closer geographic proximity (Haversine formula), lower age, and higher pollutant coverage are prioritized.
 
-10. **CPCB Pagination**:
+10. **CPCB Pagination & Total Count Tracking**:
     - Implemented offset/limit pagination loop in `cpcbProvider.ts` to retrieve complete station listings without truncating at a single page of 100 records.
+    - Captures `total` records reported from data.gov.in and computes `isPaginationComplete` indicator.
 
-11. **Open-Meteo Forecast Validation**:
+11. **Open-Meteo Forecast Validation & Payload Corruption Rejection**:
     - Validates timestamp ordering, duplicates, missing hours, and null observations.
+    - Strict Zod `.superRefine` rejects payloads with duplicate timestamps, non-chronological hours, and misaligned array lengths.
     - Forecast window computation in `openMeteoProvider.ts` checks that consecutive hours have an exact 1-hour time gap (`t2 - t1 === 3600000ms`), preventing artificial consecutive windows across missing timestamps. Labelled as `"Lowest Modelled PM2.5 Forecast Window"`.
 
 12. **Environmental Impact & Routine Savings**:
@@ -65,12 +67,13 @@ Firebase Project: `data-blend-vc62s` / `ai-studio-breathewise-0d124cc1-42ec-406c
 
 14. **Indoor Air Quality Science**:
     - Volume calculations ($L \times W \times H$), required CADR ($Volume \times Target ACH$), effective ACH ($CADR / Volume$), and CFM / $\text{m}^3\text{/h}$ conversions fully validated in `src/domain/indoorAir.ts`.
+    - Explicitly incorporates Harvard T.H. Chan / ASHRAE 62.2 / CDC ventilation targets (3–6 ACH), documents HEPA filtration mechanical limits (≥99.97% at 0.3 µm for particulates, ineffective against gaseous VOCs and CO), explains activated carbon adsorption, and cautions against ozone-generating devices.
 
 ---
 
 ## 3. Verification & Test Results
 
-- **Vitest Unit & Integration Tests**: **54/54 tests passed** across all 8 test files (`tests/unit/*`, `tests/integration/api.test.ts`).
+- **Vitest Unit & Integration Tests**: **57/57 tests passed** across all 8 test files (`tests/unit/*`, `tests/integration/api.test.ts`).
 - **Node 22 Pure Logic Tests**: **1/1 passed** (`src/domain/pureLogic.node-test.ts`).
 - **TypeScript Typecheck & ESLint (`npm run lint`)**: **Pass** (`tsc --noEmit && eslint .` returned 0 errors).
 - **Production Build (`npm run build`)**: **Pass** (`vite build` completed successfully).

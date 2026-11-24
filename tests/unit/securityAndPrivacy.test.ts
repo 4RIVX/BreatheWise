@@ -13,7 +13,15 @@ import {
   sanitizeOperationalText,
 } from "../../src/firebase/errorHandling";
 import { DEFAULT_CLEAN_AIR_ROUTINES } from "../../src/domain/defaultRoutines";
-import { normalizeCpcbRecords } from "../../server/providers/cpcbProvider";
+import {
+  CpcbApiResponseSchema,
+  fetchCpcbStations,
+  normalizeCpcbRecords,
+} from "../../server/providers/cpcbProvider";
+import {
+  OpenMeteoAqSchema,
+  OpenMeteoWeatherSchema,
+} from "../../server/providers/openMeteoProvider";
 import { buildServerVerifiedAirContext } from "../../server/services/verifiedAirContextBuilder";
 
 vi.mock("../../src/firebase/config", () => ({
@@ -297,5 +305,144 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
 
     expect(result.airContext.measuredStationName).toBe("Close Station");
     expect(result.airContext.measuredAqi).toBeGreaterThan(0);
+  });
+
+  it("strictly rejects Open-Meteo payloads with corrupted, duplicate, or misaligned hourly series", () => {
+    // 1. Duplicate timestamps
+    const duplicateTimesPayload = {
+      latitude: 28.6,
+      longitude: 77.2,
+      hourly: {
+        time: ["2026-03-01T08:00", "2026-03-01T08:00"], // duplicate!
+        pm2_5: [50, 52],
+      },
+    };
+    const dupRes = OpenMeteoAqSchema.safeParse(duplicateTimesPayload);
+    expect(dupRes.success).toBe(false);
+    if (!dupRes.success) {
+      expect(dupRes.error.issues[0].message).toContain(
+        "Timestamps must be strictly increasing"
+      );
+    }
+
+    // 2. Non-chronological timestamps (backwards in time)
+    const backwardsTimesPayload = {
+      latitude: 28.6,
+      longitude: 77.2,
+      hourly: {
+        time: ["2026-03-01T10:00", "2026-03-01T09:00"], // reversed!
+        pm2_5: [50, 52],
+      },
+    };
+    const backRes = OpenMeteoAqSchema.safeParse(backwardsTimesPayload);
+    expect(backRes.success).toBe(false);
+
+    // 3. Misaligned array lengths
+    const misalignedPayload = {
+      latitude: 28.6,
+      longitude: 77.2,
+      hourly: {
+        time: ["2026-03-01T08:00", "2026-03-01T09:00", "2026-03-01T10:00"],
+        pm2_5: [50, 52], // length 2 vs time length 3!
+      },
+    };
+    const misRes = OpenMeteoAqSchema.safeParse(misalignedPayload);
+    expect(misRes.success).toBe(false);
+    if (!misRes.success) {
+      expect(misRes.error.issues[0].message).toContain(
+        "Hourly array 'pm2_5' length (2) must match time length (3)"
+      );
+    }
+
+    // 4. Weather hourly series validation
+    const weatherInvalidPayload = {
+      hourly: {
+        time: ["2026-03-01T08:00", "2026-03-01T09:00"],
+        wind_speed_10m: [12.5], // length mismatch
+      },
+    };
+    expect(OpenMeteoWeatherSchema.safeParse(weatherInvalidPayload).success).toBe(false);
+
+    // 5. Valid payload parses cleanly
+    const validPayload = {
+      latitude: 28.6,
+      longitude: 77.2,
+      hourly: {
+        time: ["2026-03-01T08:00", "2026-03-01T09:00"],
+        pm2_5: [50, 52],
+      },
+    };
+    expect(OpenMeteoAqSchema.safeParse(validPayload).success).toBe(true);
+  });
+
+  it("accurately tracks CPCB total records and calculates pagination completeness", async () => {
+    // Schema test for data.gov.in total/count response structure
+    const parsedSchema = CpcbApiResponseSchema.safeParse({
+      status: "ok",
+      total: "250",
+      count: "100",
+      records: [],
+    });
+    expect(parsedSchema.success).toBe(true);
+    expect(parsedSchema.data?.total).toBe("250");
+
+    // Mock fetch that returns total = 150 across 2 pages of limit 100
+    let callCount = 0;
+    const paginatedFetch: typeof fetch = async (input) => {
+      callCount += 1;
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get("offset") || "0");
+      if (offset === 0) {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            total: 150,
+            count: 100,
+            records: Array.from({ length: 100 }, (_, i) => ({
+              station: `Station-${i}`,
+              city: "Hyderabad",
+              state: "Telangana",
+              pollutant_id: "PM2.5",
+              pollutant_avg: "45",
+              pollutant_min: "20",
+              pollutant_max: "70",
+              last_update: "20-01-2026 10:00:00",
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          total: 150,
+          count: 50,
+          records: Array.from({ length: 50 }, (_, i) => ({
+            station: `Station-${100 + i}`,
+            city: "Hyderabad",
+            state: "Telangana",
+            pollutant_id: "PM2.5",
+            pollutant_avg: "48",
+            pollutant_min: "22",
+            pollutant_max: "75",
+            last_update: "20-01-2026 10:00:00",
+          })),
+        }),
+        { status: 200 }
+      );
+    };
+
+    const res = await fetchCpcbStations({
+      city: "Hyderabad",
+      state: "Telangana",
+      apiKey: "pagination-test-key",
+      fetchImpl: paginatedFetch,
+    });
+
+    expect(callCount).toBe(2);
+    expect(res.status).toBe("available");
+    expect(res.totalRecordsReported).toBe(150);
+    expect(res.isPaginationComplete).toBe(true);
+    expect(res.stations.length).toBe(150);
   });
 });

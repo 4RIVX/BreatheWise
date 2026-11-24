@@ -39,7 +39,6 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState<RoutineCategory>("Mobility");
   const [newDesc, setNewDesc] = useState("");
-  const [newCo2, setNewCo2] = useState<number>(1.5);
   const [newExposureNote, setNewExposureNote] = useState(
     "Reduces local combustion or roadside exposure"
   );
@@ -72,7 +71,7 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
       description:
         newDesc.trim() || "Custom household low-emission habit tracked daily.",
       category: newCategory,
-      co2SavedKg: Math.max(0, Number(newCo2) || 0),
+      co2SavedKg: 0.0, // Numerical emissions calculated strictly via Eco-Mobility Tracker with distance & emission factors
       exposureNote: newExposureNote.trim() || "Low-emission household habit",
       completedToday: true,
       weeklyCompletions: 1,
@@ -196,7 +195,7 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
               <option value="Community">Community</option>
             </select>
           </div>
-          <div className="md:col-span-3">
+          <div className="md:col-span-5">
             <label
               htmlFor="new-routine-desc"
               className="block text-xs font-medium text-slate-700 mb-1"
@@ -210,24 +209,6 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
               onChange={(e) => setNewDesc(e.target.value)}
               placeholder="What this habit changes"
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label
-              htmlFor="new-routine-co2"
-              className="block text-xs font-medium text-slate-700 mb-1"
-            >
-              Est. CO2e / day (kg)
-            </label>
-            <input
-              id="new-routine-co2"
-              type="number"
-              min={0}
-              max={100}
-              step={0.1}
-              value={newCo2}
-              onChange={(e) => setNewCo2(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
             />
           </div>
           <div className="md:col-span-2">
@@ -319,7 +300,11 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
               <span aria-hidden="true" className="text-slate-300">
                 ·
               </span>
-              <span>~{routine.co2SavedKg.toFixed(1)} kg CO2e</span>
+              <span>
+                {routine.co2SavedKg > 0
+                  ? `~${routine.co2SavedKg.toFixed(1)} kg CO2e`
+                  : "Habit Log"}
+              </span>
             </div>
           </div>
         ))}

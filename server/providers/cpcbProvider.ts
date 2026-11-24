@@ -28,9 +28,13 @@ const CpcbRecordSchema = z.object({
   pollutant_unit: z.string().optional(),
 });
 
-const CpcbApiResponseSchema = z.object({
+export const CpcbApiResponseSchema = z.object({
   status: z.string().optional(),
   message: z.string().optional(),
+  total: z.union([z.string(), z.number()]).optional(),
+  count: z.union([z.string(), z.number()]).optional(),
+  limit: z.union([z.string(), z.number()]).optional(),
+  offset: z.union([z.string(), z.number()]).optional(),
   records: z.array(CpcbRecordSchema).default([]),
 });
 
@@ -67,6 +71,8 @@ export interface CpcbProviderResponse {
   stations: CpcbStationMeasurement[];
   cached: boolean;
   fetchedAtIso: string;
+  totalRecordsReported?: number | null;
+  isPaginationComplete?: boolean;
 }
 
 const cpcbCache = new TtlCache<CpcbProviderResponse>(15 * 60 * 1000); // 15 min cache
@@ -262,6 +268,7 @@ export async function fetchCpcbStations(params: {
     let offset = 0;
     const limit = 100;
     let hasMore = true;
+    let totalRecordsReported: number | null = null;
 
     while (hasMore && offset < 500) {
       const url = new URL(CPCB_BASE_URL);
@@ -292,6 +299,11 @@ export async function fetchCpcbStations(params: {
         break;
       }
 
+      if (parsed.data.total !== undefined && parsed.data.total !== null) {
+        const num = Number(parsed.data.total);
+        if (Number.isFinite(num)) totalRecordsReported = num;
+      }
+
       allRecords.push(...parsed.data.records);
       if (parsed.data.records.length < limit) {
         hasMore = false;
@@ -299,6 +311,11 @@ export async function fetchCpcbStations(params: {
         offset += limit;
       }
     }
+
+    const isPaginationComplete =
+      totalRecordsReported !== null
+        ? allRecords.length >= totalRecordsReported
+        : !hasMore;
 
     const stations = normalizeCpcbRecords(allRecords);
     if (stations.length === 0) {
@@ -310,6 +327,8 @@ export async function fetchCpcbStations(params: {
         stations: [],
         cached: false,
         fetchedAtIso,
+        totalRecordsReported,
+        isPaginationComplete,
       };
       cpcbCache.set(cacheKey, noDataResult, 5 * 60 * 1000);
       return noDataResult;
@@ -322,6 +341,8 @@ export async function fetchCpcbStations(params: {
       stations,
       cached: false,
       fetchedAtIso,
+      totalRecordsReported,
+      isPaginationComplete,
     };
     cpcbCache.set(cacheKey, successResult);
     return successResult;

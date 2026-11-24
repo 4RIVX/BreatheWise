@@ -30,11 +30,12 @@
 - **Indian National AQI Engine**: Official CPCB 2014 methodology (`src/domain/indianAqi.ts`) with correct breakpoints, 24h/8h averaging periods, 16h completeness threshold, requirement for 3 valid pollutants including PM2.5 or PM10, and max sub-index calculation.
 - **Emission Factor Source Traceability**: Every factor in `EMISSION_FACTORS_INDIA` (`src/domain/ecoImpact.ts`) includes direct source URLs, publishers, publication years, page/table references, and pollutant scopes.
 - **Zeroed Predefined Routine Savings**: Default clean-air routines in `defaultRoutines.ts` initialize to 0.0 kg CO2e, avoiding arbitrary unsupported numbers. Savings are calculated only when user trip distance and transport mode parameters are supplied.
-- **Indoor Air Science**: Strict $L \times W \times H$ room volume, CADR, ACH, and CFM / $\text{m}^3\text{/h}$ conversions validated in `src/domain/indoorAir.ts`.
+- **Indoor Air Science**: Strict $L \times W \times H$ room volume, CADR, ACH, and CFM / $\text{m}^3\text{/h}$ conversions validated in `src/domain/indoorAir.ts`. Enhanced with Harvard T.H. Chan / ASHRAE 62.2 / CDC ventilation benchmarks (3–6 ACH), true HEPA mechanical filtration limits (≥99.97% at 0.3 µm for particulates, non-reactive for gaseous VOCs/CO), and activated carbon adsorption guidance.
+- **Open-Meteo & CPCB Upstream Validation**: Zod `.superRefine` on Open-Meteo schemas enforces strictly increasing timestamps, duplicate rejection, and array length consistency. CPCB provider tracks `totalRecordsReported` from data.gov.in and computes `isPaginationComplete`.
 
 ## 4. Verified Commands & Results
 
-- **Vitest Unit & Integration Tests**: `8 passed`, `54/54 tests passed` (including `tests/unit/securityAndPrivacy.test.ts`, `tests/unit/ecoImpact.test.ts`, and `tests/integration/api.test.ts`).
+- **Vitest Unit & Integration Tests**: `8 passed`, `57/57 tests passed` (including `tests/unit/securityAndPrivacy.test.ts`, `tests/unit/ecoImpact.test.ts`, and `tests/integration/api.test.ts`).
 - **Node 22 Pure Logic Tests**: `1/1 passed` (`src/domain/pureLogic.node-test.ts`).
 - **TypeScript & ESLint (`npm run lint`)**: `Pass` (`tsc --noEmit && eslint .`, `0` errors).
 - **Production Build (`npm run build`)**: `Pass` (`vite build` completed cleanly).

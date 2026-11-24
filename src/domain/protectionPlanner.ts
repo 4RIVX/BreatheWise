@@ -10,7 +10,7 @@ export interface DailyProtectionStep {
 }
 
 export interface HouseholdRecommendationPlan {
-  riskTier: "Low" | "Moderate" | "Elevated" | "High";
+  riskTier: "Unknown" | "Low" | "Moderate" | "Elevated" | "High";
   maskRecommended: boolean;
   maskNote: string;
   ventilationWindowNote: string;
@@ -42,9 +42,9 @@ export function buildDailyProtectionPlan(params: {
                 : 340
         : null;
 
-  let riskTier: "Low" | "Moderate" | "Elevated" | "High";
+  let riskTier: "Unknown" | "Low" | "Moderate" | "Elevated" | "High";
   if (effectiveSeverity === null) {
-    riskTier = "Moderate";
+    riskTier = "Unknown";
   } else if (effectiveSeverity <= 50) {
     riskTier = "Low";
   } else if (effectiveSeverity <= 100) {
@@ -62,23 +62,29 @@ export function buildDailyProtectionPlan(params: {
 
   const maskRecommended =
     riskTier === "High" ||
+    riskTier === "Unknown" ||
     (riskTier === "Elevated" &&
       (isVulnerable || household.profileId === "commuter"));
 
-  const maskNote = maskRecommended
-    ? "Wear a well-fitted N95 or FFP2 respirator outdoors along busy roads or during peak morning/evening haze."
-    : riskTier === "Moderate" && isVulnerable
-      ? "Keep an N95/FFP2 respirator handy for prolonged roadside commutes or sudden local smoke."
-      : "Masking is generally not required outdoors at current estimated levels unless near active dust or smoke.";
+  const maskNote =
+    riskTier === "Unknown"
+      ? "Air-quality data is currently unavailable. Exercise caution: keep a well-fitted N95/FFP2 respirator handy if travelling along congested roads or if visible haze or odor is detected."
+      : maskRecommended
+        ? "Wear a well-fitted N95 or FFP2 respirator outdoors along busy roads or during peak morning/evening haze."
+        : riskTier === "Moderate" && isVulnerable
+          ? "Keep an N95/FFP2 respirator handy for prolonged roadside commutes or sudden local smoke."
+          : "Masking is generally not required outdoors at current estimated levels unless near active dust or smoke.";
 
   const ventilationWindowNote =
-    riskTier === "High" || riskTier === "Elevated"
-      ? bestWindowLabel
-        ? `Keep windows closed during stagnant morning/night hours; ventilate briefly around ${bestWindowLabel} if outdoor haze visibly clears.`
-        : "Limit window opening during calm mornings and evenings; rely on indoor exhaust fans during cooking."
-      : windKmh !== null && windKmh >= 10
-        ? "Boundary wind supports short cross-ventilation flushes to refresh indoor CO2."
-        : "Open windows briefly during midday hours when outdoor particulate readings are lowest.";
+    riskTier === "Unknown"
+      ? "Air-quality data is currently unavailable. Inspect outdoor atmospheric visibility and check for local smoke before opening windows, and prioritize mechanical kitchen exhaust during cooking."
+      : riskTier === "High" || riskTier === "Elevated"
+        ? bestWindowLabel
+          ? `Keep windows closed during stagnant morning/night hours; ventilate briefly around ${bestWindowLabel} if outdoor haze visibly clears.`
+          : "Limit window opening during calm mornings and evenings; rely on indoor exhaust fans during cooking."
+        : windKmh !== null && windKmh >= 10
+          ? "Boundary wind supports short cross-ventilation flushes to refresh indoor CO2."
+          : "Open windows briefly during midday hours when outdoor particulate readings are lowest.";
 
   const steps: DailyProtectionStep[] = [
     {

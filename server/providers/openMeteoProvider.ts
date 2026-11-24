@@ -12,51 +12,138 @@ const OPEN_METEO_AQ_URL =
   "https://air-quality-api.open-meteo.com/v1/air-quality";
 const OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
 
-const OpenMeteoAqSchema = z.object({
-  latitude: z.number(),
-  longitude: z.number(),
-  timezone: z.string().optional(),
-  current: z
-    .object({
-      time: z.string(),
-      pm2_5: z.number().nullable().optional(),
-      pm10: z.number().nullable().optional(),
-      nitrogen_dioxide: z.number().nullable().optional(),
-      sulphur_dioxide: z.number().nullable().optional(),
-      ozone: z.number().nullable().optional(),
-      carbon_monoxide: z.number().nullable().optional(),
-    })
-    .optional(),
-  hourly: z
-    .object({
-      time: z.array(z.string()),
-      pm2_5: z.array(z.number().nullable()).optional(),
-      pm10: z.array(z.number().nullable()).optional(),
-      nitrogen_dioxide: z.array(z.number().nullable()).optional(),
-      sulphur_dioxide: z.array(z.number().nullable()).optional(),
-      ozone: z.array(z.number().nullable()).optional(),
-      carbon_monoxide: z.array(z.number().nullable()).optional(),
-    })
-    .optional(),
-});
+export const OpenMeteoAqSchema = z
+  .object({
+    latitude: z.number(),
+    longitude: z.number(),
+    timezone: z.string().optional(),
+    current: z
+      .object({
+        time: z.string(),
+        pm2_5: z.number().nullable().optional(),
+        pm10: z.number().nullable().optional(),
+        nitrogen_dioxide: z.number().nullable().optional(),
+        sulphur_dioxide: z.number().nullable().optional(),
+        ozone: z.number().nullable().optional(),
+        carbon_monoxide: z.number().nullable().optional(),
+      })
+      .optional(),
+    hourly: z
+      .object({
+        time: z.array(z.string()),
+        pm2_5: z.array(z.number().nullable()).optional(),
+        pm10: z.array(z.number().nullable()).optional(),
+        nitrogen_dioxide: z.array(z.number().nullable()).optional(),
+        sulphur_dioxide: z.array(z.number().nullable()).optional(),
+        ozone: z.array(z.number().nullable()).optional(),
+        carbon_monoxide: z.array(z.number().nullable()).optional(),
+      })
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.hourly) {
+      const times = data.hourly.time;
+      const len = times.length;
+      let prevMs = -Infinity;
+      for (let i = 0; i < len; i += 1) {
+        const ms = new Date(times[i]).getTime();
+        if (Number.isNaN(ms)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Invalid ISO timestamp at index ${i}: ${times[i]}`,
+            path: ["hourly", "time", i],
+          });
+          return;
+        }
+        if (ms <= prevMs) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Timestamps must be strictly increasing. Duplicate or non-chronological at index ${i}: ${times[i]}`,
+            path: ["hourly", "time", i],
+          });
+          return;
+        }
+        prevMs = ms;
+      }
 
-const OpenMeteoWeatherSchema = z.object({
-  current: z
-    .object({
-      time: z.string(),
-      temperature_2m: z.number().nullable().optional(),
-      relative_humidity_2m: z.number().nullable().optional(),
-      wind_speed_10m: z.number().nullable().optional(),
-    })
-    .optional(),
-  hourly: z
-    .object({
-      time: z.array(z.string()),
-      wind_speed_10m: z.array(z.number().nullable()).optional(),
-      boundary_layer_height: z.array(z.number().nullable()).optional(),
-    })
-    .optional(),
-});
+      const pollutantKeys = [
+        "pm2_5",
+        "pm10",
+        "nitrogen_dioxide",
+        "sulphur_dioxide",
+        "ozone",
+        "carbon_monoxide",
+      ] as const;
+      for (const key of pollutantKeys) {
+        const arr = data.hourly[key];
+        if (arr && arr.length !== len) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Hourly array '${key}' length (${arr.length}) must match time length (${len})`,
+            path: ["hourly", key],
+          });
+        }
+      }
+    }
+  });
+
+export const OpenMeteoWeatherSchema = z
+  .object({
+    current: z
+      .object({
+        time: z.string(),
+        temperature_2m: z.number().nullable().optional(),
+        relative_humidity_2m: z.number().nullable().optional(),
+        wind_speed_10m: z.number().nullable().optional(),
+      })
+      .optional(),
+    hourly: z
+      .object({
+        time: z.array(z.string()),
+        wind_speed_10m: z.array(z.number().nullable()).optional(),
+        boundary_layer_height: z.array(z.number().nullable()).optional(),
+      })
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.hourly) {
+      const times = data.hourly.time;
+      const len = times.length;
+      let prevMs = -Infinity;
+      for (let i = 0; i < len; i += 1) {
+        const ms = new Date(times[i]).getTime();
+        if (Number.isNaN(ms) || ms <= prevMs) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Weather timestamps must be valid and strictly increasing at index ${i}`,
+            path: ["hourly", "time", i],
+          });
+          return;
+        }
+        prevMs = ms;
+      }
+      if (
+        data.hourly.wind_speed_10m &&
+        data.hourly.wind_speed_10m.length !== len
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `wind_speed_10m length mismatch`,
+          path: ["hourly", "wind_speed_10m"],
+        });
+      }
+      if (
+        data.hourly.boundary_layer_height &&
+        data.hourly.boundary_layer_height.length !== len
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `boundary_layer_height length mismatch`,
+          path: ["hourly", "boundary_layer_height"],
+        });
+      }
+    }
+  });
 
 export interface ModelledHourlyPoint {
   timeIso: string;

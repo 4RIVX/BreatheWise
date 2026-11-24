@@ -13,22 +13,22 @@ const INDOOR_GUIDANCE_ITEMS = [
   {
     title: "Reduce Indoor Pollution Sources First",
     detail:
-      "Source control is more effective than filtration alone. Avoid smoking indoors, reduce unvented incense/mosquito-coil combustion, and minimize dry sweeping that resuspends fine dust.",
+      "Source control is substantially more effective than filtration alone. Eliminate indoor smoking, minimize unvented incense and mosquito coil burning, avoid unvented kerosene heaters, and avoid dry sweeping that resuspends settled dust.",
   },
   {
-    title: "Ventilated Kitchen Exhaust During Cooking",
+    title: "Kitchen Exhaust & Localized Ventilation",
     detail:
-      "Use a ducted kitchen chimney or exhaust fan whenever frying, roasting, or tempering spices to remove ultrafine PM2.5 and NO2 directly at the stove.",
+      "Operate a dedicated ducted kitchen chimney or high-flow exhaust fan during all frying, roasting, and tempering. Cooking produces high peaks of ultrafine PM2.5, acrolein, and NO2 that must be expelled at the source.",
   },
   {
-    title: "HEPA Filtration & Filter Maintenance",
+    title: "HEPA Filtration & Limits on Gaseous VOCs / CO",
     detail:
-      "Select true HEPA (H13/H14) purifiers sized to deliver your target ACH at an acceptable noise level, and replace/vacuum pre-filters per manufacturer schedules. Strictly avoid ozone-generating purifiers or ionizers.",
+      "True HEPA (H13/H14) filters trap airborne particulate matter (PM2.5, PM10, allergens, combustion soot) with ≥99.97% efficiency at 0.3 microns (the most penetrating particle size). However, HEPA mechanical filters do NOT capture gaseous pollutants, VOCs, formaldehyde, ozone, or carbon monoxide (CO). Gaseous abatement requires dedicated activated carbon adsorption beds. Strictly avoid electronic ionizers, plasma generators, or ozone-generating 'air cleaners' which produce respiratory tract irritants.",
   },
   {
-    title: "Time Natural Ventilation Against Outdoor Air Quality",
+    title: "Target Air Changes per Hour (Harvard Chan / ASHRAE / CDC)",
     detail:
-      "Check both measured CPCB stations and regional wind forecasts before opening windows. When outdoor particulate levels are high, keep doors/windows sealed and rely on recirculation filtration.",
+      "Target ACH benchmarks: 3 ACH (baseline air exchange), 4–5 ACH (Harvard T.H. Chan School of Public Health & ASHRAE 62.2 standard for healthy indoor spaces), and 6+ ACH (CDC / WHO guidance during severe wildfire smoke or severe smog inversions). Time natural cross-ventilation when ambient PM2.5 drops during midday convective mixing.",
   },
 ];
 
@@ -290,9 +290,14 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 </p>
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed">
-                <strong>Calculator Scope:</strong> {metrics.disclaimer}
-              </p>
+              <div className="text-xs text-slate-600 leading-relaxed space-y-1">
+                <p>
+                  <strong>Calculator Scope:</strong> {metrics.disclaimer}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  <strong>Scientific Benchmarks:</strong> Sized according to Harvard T.H. Chan / ASHRAE 62.2 / CDC ventilation guidance (3–6 ACH). CADR (Clean Air Delivery Rate) measures particulate clearance volume per unit time. True HEPA captures particulate matter (≥99.97% at 0.3 µm) but requires activated carbon for gaseous VOC/odor adsorption.
+                </p>
+              </div>
             </div>
           )}
         </div>

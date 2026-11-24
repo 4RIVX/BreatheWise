@@ -57,4 +57,20 @@ describe("Personalized Daily Protection Planner", () => {
     expect(plan.maskRecommended).toBe(false);
     expect(plan.ventilationWindowNote).toContain("cross-ventilation");
   });
+
+  it("treats unavailable data as Unknown risk tier with cautionary guidance instead of defaulting to Moderate", () => {
+    const plan = buildDailyProtectionPlan({
+      aqi: null,
+      category: null,
+      pm25: null,
+      windKmh: null,
+      bestWindowLabel: null,
+      household: { ...BASE_HOUSEHOLD, profileId: "general" },
+    });
+
+    expect(plan.riskTier).toBe("Unknown");
+    expect(plan.maskRecommended).toBe(true);
+    expect(plan.maskNote).toContain("Air-quality data is currently unavailable");
+    expect(plan.ventilationWindowNote).toContain("Air-quality data is currently unavailable");
+  });
 });

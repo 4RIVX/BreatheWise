@@ -125,6 +125,7 @@ export function createApp(deps: AppDependencies = {}) {
     legacyHeaders: false,
     store: apiStore,
     skip: () => !limiterEnabled,
+    validate: { keyGeneratorIpFallback: false },
     keyGenerator: (req, _res) =>
       `api:${hashIdentifier(req.socket.remoteAddress || req.ip || "unknown")}`,
     message: {
@@ -167,6 +168,7 @@ export function createApp(deps: AppDependencies = {}) {
     legacyHeaders: false,
     store: aiStore,
     skip: () => !limiterEnabled,
+    validate: { keyGeneratorIpFallback: false },
     keyGenerator: (req, _res) => {
       const caller = req as RequestWithCaller;
       if (caller.verifiedUid) {
