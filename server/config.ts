@@ -141,7 +141,10 @@ export function loadServerConfig(
   }
 
   return {
-    port: Number(env.PORT ?? 3000),
+    port: (() => {
+      const p = Number(env.PORT);
+      return Number.isFinite(p) && p > 0 ? p : 3000;
+    })(),
     host: env.HOST ?? "0.0.0.0",
     aiProvider,
     aiFallbackProvider,
