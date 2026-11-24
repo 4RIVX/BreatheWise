@@ -1,19 +1,29 @@
-export type VerifiedImageFormat = "jpeg" | "png" | "webp";
+import sharp, { type Metadata } from "sharp";
+
+export type InputImageFormat = "jpeg" | "png" | "webp";
+export type OutputMimeType = "image/webp";
 
 export interface SanitizedImageResult {
-  format: VerifiedImageFormat;
-  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  format: "webp";
+  inputFormat: InputImageFormat;
+  mimeType: OutputMimeType;
   strippedBuffer: Buffer;
   dataUrl: string;
+  width: number;
+  height: number;
   originalBytes: number;
   sanitizedBytes: number;
   metadataStripped: boolean;
 }
 
-const MAX_INPUT_BYTES = 2 * 1024 * 1024; // 2 MB upload limit
-const MAX_FIRESTORE_THUMBNAIL_BYTES = 56 * 1024; // Keeps base64 dataUrl under 80KB Firestore bound
+export const MAX_INPUT_BYTES = 2 * 1024 * 1024; // 2 MB upload limit
+export const MAX_IMAGE_WIDTH = 4096;
+export const MAX_IMAGE_HEIGHT = 4096;
+export const MAX_DECODED_PIXELS = 16_000_000; // 16 MP limit against pixel bombs
+export const THUMBNAIL_MAX_DIMENSION = 640;
+export const MAX_FIRESTORE_THUMBNAIL_BYTES = 56 * 1024; // Keeps base64 dataUrl under 80 KB Firestore bound
 
-export function detectImageFormat(buf: Buffer): VerifiedImageFormat | null {
+export function detectImageFormat(buf: Buffer): InputImageFormat | null {
   if (buf.length < 12) return null;
 
   // JPEG magic: FF D8 FF
@@ -46,163 +56,98 @@ export function detectImageFormat(buf: Buffer): VerifiedImageFormat | null {
   return null;
 }
 
-/**
- * Strips APP1 (EXIF/GPS/XMP), APP13 (IPTC), and COM (Comment) segments from JPEG binaries.
- */
-export function stripJpegMetadata(buf: Buffer): {
-  buffer: Buffer;
-  stripped: boolean;
-} {
-  if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) {
-    throw new Error("Invalid JPEG binary stream.");
+function hasAnimatedContainerMarkers(
+  buf: Buffer,
+  format: InputImageFormat
+): boolean {
+  if (format === "webp") {
+    let offset = 12;
+    while (offset + 8 <= buf.length) {
+      const fourCc = buf.subarray(offset, offset + 4).toString("ascii");
+      const size = buf.readUInt32LE(offset + 4);
+      if (fourCc === "ANIM" || fourCc === "ANMF") {
+        return true;
+      }
+      if (fourCc === "VP8X" && offset + 12 <= buf.length) {
+        const flags = buf[offset + 8];
+        if ((flags & 0x02) !== 0) return true; // WebP Animation bit
+      }
+      const padded = size + (size % 2);
+      if (padded < 0 || offset + 8 + padded > buf.length) break;
+      offset += 8 + padded;
+    }
+  } else if (format === "png") {
+    let offset = 8;
+    while (offset + 12 <= buf.length) {
+      const length = buf.readUInt32BE(offset);
+      const type = buf.subarray(offset + 4, offset + 8).toString("ascii");
+      if (type === "acTL") {
+        return true; // Animated PNG chunk
+      }
+      if (offset + 12 + length > buf.length) break;
+      offset += 12 + length;
+      if (type === "IEND") break;
+    }
   }
-
-  const chunks: Buffer[] = [buf.subarray(0, 2)]; // SOI
-  let offset = 2;
-  let stripped = false;
-
-  while (offset < buf.length) {
-    if (buf[offset] !== 0xff) {
-      throw new Error("Malformed JPEG marker structure.");
-    }
-
-    // Skip fill bytes 0xFF
-    while (offset < buf.length && buf[offset] === 0xff) {
-      offset += 1;
-    }
-    if (offset >= buf.length) break;
-
-    const marker = buf[offset];
-    offset += 1;
-
-    // SOS (Start of Scan, 0xDA) or EOI (0xD9): copy remainder of compressed scan data
-    if (marker === 0xda) {
-      chunks.push(Buffer.from([0xff, marker]));
-      chunks.push(buf.subarray(offset));
-      break;
-    }
-    if (marker === 0xd9) {
-      chunks.push(Buffer.from([0xff, marker]));
-      break;
-    }
-
-    // Standalone markers without length
-    if (
-      marker === 0x00 ||
-      marker === 0x01 ||
-      (marker >= 0xd0 && marker <= 0xd7)
-    ) {
-      chunks.push(Buffer.from([0xff, marker]));
-      continue;
-    }
-
-    if (offset + 2 > buf.length) {
-      throw new Error("Truncated JPEG segment length.");
-    }
-    const segLen = buf.readUInt16BE(offset);
-    if (segLen < 2 || offset + segLen > buf.length) {
-      throw new Error("Invalid JPEG segment length.");
-    }
-
-    // Strip APP1 (EXIF/GPS/XMP = 0xE1), APP2-APP13 metadata (0xE2-0xED except ICC? keep APP0 JFIF & APP14 Adobe), COM (0xFE)
-    const shouldStrip =
-      marker === 0xe1 || (marker >= 0xe3 && marker <= 0xed) || marker === 0xfe;
-
-    if (shouldStrip) {
-      stripped = true;
-    } else {
-      chunks.push(Buffer.from([0xff, marker]));
-      chunks.push(buf.subarray(offset, offset + segLen));
-    }
-
-    offset += segLen;
-  }
-
-  return { buffer: Buffer.concat(chunks), stripped };
+  return false;
 }
 
-/**
- * Strips eXIf, tEXt, zTXt, iTXt, tIME chunks from PNG binaries while preserving image & IHDR/IDAT/IEND.
- */
-export function stripPngMetadata(buf: Buffer): {
-  buffer: Buffer;
-  stripped: boolean;
-} {
-  const sig = buf.subarray(0, 8);
-  const chunks: Buffer[] = [sig];
-  let offset = 8;
-  let stripped = false;
-  const METADATA_CHUNKS = new Set(["eXIf", "tEXt", "zTXt", "iTXt", "tIME"]);
-
-  while (offset + 12 <= buf.length) {
-    const length = buf.readUInt32BE(offset);
-    const type = buf.subarray(offset + 4, offset + 8).toString("ascii");
-    const totalChunkSize = 12 + length;
-
-    if (offset + totalChunkSize > buf.length) {
-      throw new Error("Truncated PNG chunk.");
+function detectPolyglotTrailer(buf: Buffer, format: InputImageFormat): void {
+  if (format === "png") {
+    let offset = 8;
+    while (offset + 12 <= buf.length) {
+      const length = buf.readUInt32BE(offset);
+      const type = buf.subarray(offset + 4, offset + 8).toString("ascii");
+      const end = offset + 12 + length;
+      if (end > buf.length) {
+        throw new Error("Malformed PNG chunk structure.");
+      }
+      offset = end;
+      if (type === "IEND") {
+        if (buf.length - offset > 0) {
+          throw new Error(
+            "Polyglot or trailing data detected after PNG image end."
+          );
+        }
+        return;
+      }
     }
-
-    if (METADATA_CHUNKS.has(type)) {
-      stripped = true;
-    } else {
-      chunks.push(buf.subarray(offset, offset + totalChunkSize));
-    }
-
-    offset += totalChunkSize;
-    if (type === "IEND") break;
+    throw new Error("Malformed PNG stream missing IEND terminator.");
   }
 
-  return { buffer: Buffer.concat(chunks), stripped };
-}
-
-/**
- * Strips EXIF and XMP RIFF chunks from WebP binaries and updates RIFF container length.
- */
-export function stripWebpMetadata(buf: Buffer): {
-  buffer: Buffer;
-  stripped: boolean;
-} {
-  const chunks: Buffer[] = [];
-  let offset = 12;
-  let stripped = false;
-  const STRIP_CHUNKS = new Set(["EXIF", "XMP "]);
-
-  while (offset + 8 <= buf.length) {
-    const fourCc = buf.subarray(offset, offset + 4).toString("ascii");
-    const chunkSize = buf.readUInt32LE(offset + 4);
-    const paddedSize = chunkSize + (chunkSize % 2);
-    const end = offset + 8 + paddedSize;
-
-    if (end > buf.length) {
-      throw new Error("Truncated WebP chunk.");
+  if (format === "webp") {
+    const riffPayloadSize = buf.readUInt32LE(4);
+    const expectedTotal = 8 + riffPayloadSize + (riffPayloadSize % 2);
+    if (expectedTotal < 12 || expectedTotal > buf.length) {
+      throw new Error("Malformed WebP RIFF container size.");
     }
-
-    if (STRIP_CHUNKS.has(fourCc)) {
-      stripped = true;
-    } else {
-      chunks.push(buf.subarray(offset, end));
+    if (buf.length - expectedTotal > 0) {
+      throw new Error(
+        "Polyglot or trailing data detected after WebP container."
+      );
     }
-    offset = end;
   }
-
-  const body = Buffer.concat(chunks);
-  const header = Buffer.alloc(12);
-  header.write("RIFF", 0, "ascii");
-  header.writeUInt32LE(4 + body.length, 4);
-  header.write("WEBP", 8, "ascii");
-  return { buffer: Buffer.concat([header, body]), stripped };
 }
 
-export function verifyAndSanitizeImage(
+export async function verifyAndSanitizeImage(
   base64OrDataUrl: string
-): SanitizedImageResult {
-  const rawPayload = base64OrDataUrl.includes(",")
-    ? base64OrDataUrl.slice(base64OrDataUrl.indexOf(",") + 1)
-    : base64OrDataUrl;
+): Promise<SanitizedImageResult> {
+  const trimmed = base64OrDataUrl.trim();
+  if (trimmed.includes(",")) {
+    const prefix = trimmed.slice(0, trimmed.indexOf(",")).toLowerCase();
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64$/.test(prefix)) {
+      throw new Error(
+        "Invalid image data URL header. Only JPEG, PNG, and WebP base64 images are permitted."
+      );
+    }
+  }
+
+  const rawPayload = trimmed.includes(",")
+    ? trimmed.slice(trimmed.indexOf(",") + 1)
+    : trimmed;
 
   const cleanBase64 = rawPayload.replace(/\s+/g, "");
-  if (!/^[A-Za-z0-9+/=]+$/.test(cleanBase64)) {
+  if (!cleanBase64 || !/^[A-Za-z0-9+/=]+$/.test(cleanBase64)) {
     throw new Error("Invalid base64 image encoding.");
   }
 
@@ -211,44 +156,122 @@ export function verifyAndSanitizeImage(
     throw new Error("Image must be between 1 byte and 2 MB.");
   }
 
-  const format = detectImageFormat(buf);
-  if (!format) {
+  const detectedFormat = detectImageFormat(buf);
+  if (!detectedFormat) {
     throw new Error(
       "Unsupported file signature. Only verified JPEG, PNG, and WebP images are permitted."
     );
   }
 
-  let strippedResult: { buffer: Buffer; stripped: boolean };
-  if (format === "jpeg") {
-    strippedResult = stripJpegMetadata(buf);
-  } else if (format === "png") {
-    strippedResult = stripPngMetadata(buf);
-  } else {
-    strippedResult = stripWebpMetadata(buf);
+  detectPolyglotTrailer(buf, detectedFormat);
+
+  if (hasAnimatedContainerMarkers(buf, detectedFormat)) {
+    throw new Error("Animated images are not permitted.");
   }
 
-  if (strippedResult.buffer.length > MAX_FIRESTORE_THUMBNAIL_BYTES) {
+  const probe = sharp(buf, {
+    limitInputPixels: MAX_DECODED_PIXELS,
+    failOn: "error",
+    animated: true,
+  });
+
+  let metadata: Metadata;
+  try {
+    metadata = await probe.metadata();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Decode error";
+    if (msg.toLowerCase().includes("pixel limit")) {
+      throw new Error(
+        `Image exceeds maximum decoded pixel count (${MAX_DECODED_PIXELS.toLocaleString()} pixels).`,
+        { cause: err }
+      );
+    }
+    throw new Error("Image failed binary decoding validation.", { cause: err });
+  }
+
+  if (
+    metadata.format !== "jpeg" &&
+    metadata.format !== "png" &&
+    metadata.format !== "webp"
+  ) {
     throw new Error(
-      "Sanitized image exceeds 56 KB compact storage limit. Please resize or compress the photo before uploading."
+      "Decoded image format is unsupported. Only JPEG, PNG, and WebP are permitted."
     );
   }
 
-  const mimeType =
-    format === "jpeg"
-      ? "image/jpeg"
-      : format === "png"
-        ? "image/png"
-        : "image/webp";
+  if ((metadata.pages ?? 1) > 1) {
+    throw new Error("Animated images are not permitted.");
+  }
 
-  const dataUrl = `data:${mimeType};base64,${strippedResult.buffer.toString("base64")}`;
+  const origWidth = metadata.width ?? 0;
+  const origHeight = metadata.height ?? 0;
+  if (origWidth <= 0 || origHeight <= 0) {
+    throw new Error("Decoded image dimensions are invalid.");
+  }
+  if (origWidth > MAX_IMAGE_WIDTH || origHeight > MAX_IMAGE_HEIGHT) {
+    throw new Error(
+      `Image dimensions (${origWidth}x${origHeight}) exceed maximum ${MAX_IMAGE_WIDTH}x${MAX_IMAGE_HEIGHT} px.`
+    );
+  }
+  if (origWidth * origHeight > MAX_DECODED_PIXELS) {
+    throw new Error(
+      `Image exceeds maximum decoded pixel count (${MAX_DECODED_PIXELS.toLocaleString()} pixels).`
+    );
+  }
+
+  const encodePlans = [
+    { maxDim: THUMBNAIL_MAX_DIMENSION, quality: 78 },
+    { maxDim: THUMBNAIL_MAX_DIMENSION, quality: 64 },
+    { maxDim: 480, quality: 58 },
+    { maxDim: 360, quality: 52 },
+  ];
+
+  let finalBuffer: Buffer | null = null;
+  let finalWidth = origWidth;
+  let finalHeight = origHeight;
+
+  for (const plan of encodePlans) {
+    const rendered = await sharp(buf, {
+      limitInputPixels: MAX_DECODED_PIXELS,
+      failOn: "error",
+    })
+      .rotate() // Applies EXIF orientation before stripping all metadata
+      .resize({
+        width: plan.maxDim,
+        height: plan.maxDim,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: plan.quality, effort: 4 }) // Re-encodes cleanly; drops EXIF/GPS/XMP/IPTC/ICC by default
+      .toBuffer({ resolveWithObject: true });
+
+    if (rendered.data.length <= MAX_FIRESTORE_THUMBNAIL_BYTES) {
+      finalBuffer = rendered.data;
+      finalWidth = rendered.info.width;
+      finalHeight = rendered.info.height;
+      break;
+    }
+  }
+
+  if (!finalBuffer) {
+    throw new Error(
+      "Re-encoded thumbnail exceeds 56 KB compact storage limit. Please upload a smaller image."
+    );
+  }
+
+  const mimeType: OutputMimeType = "image/webp";
+  const dataUrl = `data:${mimeType};base64,${finalBuffer.toString("base64")}`;
 
   return {
-    format,
+    format: "webp",
+    inputFormat: metadata.format,
     mimeType,
-    strippedBuffer: strippedResult.buffer,
+    strippedBuffer: finalBuffer,
     dataUrl,
+    width: finalWidth,
+    height: finalHeight,
     originalBytes: buf.length,
-    sanitizedBytes: strippedResult.buffer.length,
-    metadataStripped: strippedResult.stripped,
+    sanitizedBytes: finalBuffer.length,
+    metadataStripped: true,
   };
 }

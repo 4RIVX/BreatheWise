@@ -121,19 +121,18 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
-    // Validation blueprint: SmogReport
+    // Validation blueprint: Public SmogReport (strictly excludes authorUid & all PII)
     function isValidSmogReport(data) {
       return data.keys().hasAll([
-          'authorUid', 'city', 'state', 'approximateLocation',
+          'city', 'state', 'approximateLocation',
           'sourceCategory', 'severity', 'description', 'observedTimeLabel',
           'moderationStatus', 'confirmationsCount', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'authorUid', 'city', 'state', 'approximateLocation',
+          'city', 'state', 'approximateLocation',
           'sourceCategory', 'severity', 'description', 'observedTimeLabel',
           'moderationStatus', 'confirmationsCount', 'photoDataUrl', 'createdAt', 'updatedAt'
         ])
-        && isValidId(data.authorUid)
         && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
         && data.state is string && data.state.size() >= 2 && data.state.size() <= 80
         && data.approximateLocation is string && data.approximateLocation.size() >= 2 && data.approximateLocation.size() <= 120
@@ -145,7 +144,7 @@ service cloud.firestore {
         && data.description is string && data.description.size() >= 5 && data.description.size() <= 400
         && data.observedTimeLabel is string && data.observedTimeLabel.size() >= 2 && data.observedTimeLabel.size() <= 60
         && data.moderationStatus in ['UNVERIFIED', 'REVIEWED', 'FLAGGED']
-        && data.confirmationsCount is int && data.confirmationsCount >= 0 && data.confirmationsCount <= 100000
+        && data.confirmationsCount is int && data.confirmationsCount >= 1 && data.confirmationsCount <= 100000
         && (!('photoDataUrl' in data) || (
           data.photoDataUrl is string
           && data.photoDataUrl.size() <= 80000
@@ -153,6 +152,17 @@ service cloud.firestore {
         ))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
+    }
+
+    // Validation blueprint: Private SmogReportOwner
+    function isValidSmogReportOwner(data, reportId) {
+      return data.keys().hasAll(['authorUid', 'reportId', 'createdAt'])
+        && data.keys().hasOnly(['authorUid', 'reportId', 'createdAt'])
+        && isValidId(data.authorUid)
+        && isValidId(data.reportId)
+        && data.authorUid == request.auth.uid
+        && data.reportId == reportId
+        && data.createdAt is timestamp;
     }
 
     // Validation blueprint: SmogConfirmation
@@ -235,7 +245,7 @@ service cloud.firestore {
       }
     }
 
-    // Community Smog Watch Reports (publicly readable without PII; authenticated creation)
+    // Community Smog Watch Reports (publicly readable without authorUid or PII; ownership isolated)
     match /smogReports/{reportId} {
       allow get: if isValidId(reportId) && existing().moderationStatus != 'FLAGGED';
       allow list: if resource.data.moderationStatus in ['UNVERIFIED', 'REVIEWED'];
@@ -243,16 +253,17 @@ service cloud.firestore {
       allow create: if isValidId(reportId)
         && isVerifiedUser()
         && isValidSmogReport(incoming())
-        && incoming().authorUid == request.auth.uid
         && incoming().moderationStatus == 'UNVERIFIED'
         && incoming().confirmationsCount == 1
         && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/smogReports/$(reportId)/private/owner)
+        && getAfter(/databases/$(database)/documents/smogReports/$(reportId)/private/owner).data.authorUid == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/smogReports/$(reportId)/confirmations/$(request.auth.uid));
 
       allow update: if isValidId(reportId)
         && isVerifiedUser()
         && isValidSmogReport(incoming())
-        && incoming().authorUid == existing().authorUid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
@@ -270,7 +281,37 @@ service cloud.firestore {
         );
 
       allow delete: if isValidId(reportId)
-        && ((isVerifiedUser() && existing().authorUid == request.auth.uid) || isAdmin());
+        && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && exists(/databases/$(database)/documents/smogReports/$(reportId)/private/owner)
+            && get(/databases/$(database)/documents/smogReports/$(reportId)/private/owner).data.authorUid == request.auth.uid
+          )
+        );
+
+      // Private ownership metadata (isolated from public readers)
+      match /private/{docId} {
+        allow get: if isValidId(reportId)
+          && isValidId(docId)
+          && docId == 'owner'
+          && isVerifiedUser()
+          && (existing().authorUid == request.auth.uid || isAdmin());
+        allow list: if false;
+        allow create: if isValidId(reportId)
+          && isValidId(docId)
+          && docId == 'owner'
+          && isVerifiedUser()
+          && isValidSmogReportOwner(incoming(), reportId)
+          && incoming().createdAt == request.time
+          && existsAfter(/databases/$(database)/documents/smogReports/$(reportId));
+        allow update: if false;
+        allow delete: if isValidId(reportId)
+          && isValidId(docId)
+          && docId == 'owner'
+          && isVerifiedUser()
+          && (existing().authorUid == request.auth.uid || isAdmin());
+      }
 
       // Confirmation records preventing duplicate confirmations
       match /confirmations/{uid} {
@@ -279,11 +320,21 @@ service cloud.firestore {
         allow create: if isValidId(reportId)
           && isValidId(uid)
           && isOwner(uid)
-          && exists(/databases/$(database)/documents/smogReports/$(reportId))
           && isValidSmogConfirmation(incoming(), reportId, uid)
           && incoming().createdAt == request.time
-          && getAfter(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount
-             == get(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount + 1;
+          && (
+            (
+              !exists(/databases/$(database)/documents/smogReports/$(reportId))
+              && existsAfter(/databases/$(database)/documents/smogReports/$(reportId))
+              && getAfter(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount == 1
+            )
+            ||
+            (
+              exists(/databases/$(database)/documents/smogReports/$(reportId))
+              && getAfter(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount
+                 == get(/databases/$(database)/documents/smogReports/$(reportId)).data.confirmationsCount + 1
+            )
+          );
         allow update, delete: if false;
       }
     }

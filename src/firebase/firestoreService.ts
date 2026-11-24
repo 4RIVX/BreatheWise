@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -40,9 +41,12 @@ export interface FirestoreRoutineItem {
   weeklyCompletions: number;
 }
 
+/**
+ * Public community smog report model.
+ * Deliberately excludes authorUid, email, and any private reporter identifiers.
+ */
 export interface FirestoreSmogReport {
   id: string;
-  authorUid: string;
   city: string;
   state: string;
   approximateLocation: string;
@@ -267,6 +271,28 @@ export async function toggleUserRoutineCompletion(
   }
 }
 
+export function mapPublicSmogReportDoc(
+  id: string,
+  data: Record<string, unknown>
+): FirestoreSmogReport {
+  return {
+    id,
+    city: String(data.city),
+    state: String(data.state),
+    approximateLocation: String(data.approximateLocation),
+    sourceCategory: data.sourceCategory as SmogSourceCategory,
+    severity: data.severity as FirestoreSmogReport["severity"],
+    description: String(data.description),
+    observedTimeLabel: String(data.observedTimeLabel),
+    moderationStatus:
+      data.moderationStatus as FirestoreSmogReport["moderationStatus"],
+    confirmationsCount: Number(data.confirmationsCount),
+    photoDataUrl:
+      typeof data.photoDataUrl === "string" ? data.photoDataUrl : undefined,
+    createdAtIso: timestampToIso(data.createdAt),
+  };
+}
+
 export function subscribeToSmogReports(
   onData: (reports: FirestoreSmogReport[]) => void,
   onError: (err: Error) => void
@@ -282,27 +308,9 @@ export function subscribeToSmogReports(
   return onSnapshot(
     q,
     (snapshot) => {
-      const items: FirestoreSmogReport[] = snapshot.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          authorUid: String(data.authorUid),
-          city: String(data.city),
-          state: String(data.state),
-          approximateLocation: String(data.approximateLocation),
-          sourceCategory: data.sourceCategory,
-          severity: data.severity,
-          description: String(data.description),
-          observedTimeLabel: String(data.observedTimeLabel),
-          moderationStatus: data.moderationStatus,
-          confirmationsCount: Number(data.confirmationsCount),
-          photoDataUrl:
-            typeof data.photoDataUrl === "string"
-              ? data.photoDataUrl
-              : undefined,
-          createdAtIso: timestampToIso(data.createdAt),
-        };
-      });
+      const items: FirestoreSmogReport[] = snapshot.docs.map((d) =>
+        mapPublicSmogReportDoc(d.id, d.data())
+      );
       onData(items);
     },
     (error) => {
@@ -332,8 +340,7 @@ export async function createSmogReport(
   const reportId = `rep-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const path = `smogReports/${reportId}`;
 
-  const payload: Record<string, unknown> = {
-    authorUid: uid,
+  const publicPayload: Record<string, unknown> = {
     city: input.city.trim().slice(0, 80),
     state: input.state.trim().slice(0, 80),
     approximateLocation: input.approximateLocation.trim().slice(0, 120),
@@ -348,46 +355,105 @@ export async function createSmogReport(
   };
 
   if (input.photoDataUrl && input.photoDataUrl.length <= 80000) {
-    payload.photoDataUrl = input.photoDataUrl;
+    publicPayload.photoDataUrl = input.photoDataUrl;
   }
 
   try {
-    await setDoc(doc(db, "smogReports", reportId), payload);
+    // Atomically create:
+    // 1. Public smog report (without authorUid / PII)
+    // 2. Private ownership document (/smogReports/{reportId}/private/owner)
+    // 3. Author's initial confirmation record matching confirmationsCount === 1
+    const batch = writeBatch(db);
+    batch.set(doc(db, "smogReports", reportId), publicPayload);
+    batch.set(doc(db, "smogReports", reportId, "private", "owner"), {
+      authorUid: uid,
+      reportId,
+      createdAt: serverTimestamp(),
+    });
+    batch.set(doc(db, "smogReports", reportId, "confirmations", uid), {
+      uid,
+      reportId,
+      createdAt: serverTimestamp(),
+    });
+    await batch.commit();
     return reportId;
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, path);
   }
 }
 
+export interface ConfirmationTransactionAdapter {
+  get: (ref: unknown) => Promise<{
+    exists: () => boolean;
+    data: () => Record<string, unknown> | undefined;
+  }>;
+  set: (ref: unknown, data: Record<string, unknown>) => void;
+  update: (ref: unknown, data: Record<string, unknown>) => void;
+}
+
+export async function applyAtomicConfirmationTx(params: {
+  tx: ConfirmationTransactionAdapter;
+  confRef: unknown;
+  reportRef: unknown;
+  uid: string;
+  reportId: string;
+  timestampValue: unknown;
+}): Promise<number> {
+  const { tx, confRef, reportRef, uid, reportId, timestampValue } = params;
+  const [confSnap, reportSnap] = await Promise.all([
+    tx.get(confRef),
+    tx.get(reportRef),
+  ]);
+
+  if (confSnap.exists()) {
+    throw new Error("DUPLICATE_CONFIRMATION");
+  }
+  if (!reportSnap.exists()) {
+    throw new Error("REPORT_NOT_FOUND");
+  }
+
+  const currentCount = Number(reportSnap.data()?.confirmationsCount ?? 0);
+  const nextCount = currentCount + 1;
+
+  tx.set(confRef, {
+    uid,
+    reportId,
+    createdAt: timestampValue,
+  });
+  tx.update(reportRef, {
+    confirmationsCount: nextCount,
+    updatedAt: timestampValue,
+  });
+
+  return nextCount;
+}
+
 export async function confirmSmogReportAtomic(
   uid: string,
-  reportId: string,
-  currentCount: number
-): Promise<void> {
+  reportId: string
+): Promise<number> {
   if (!db) throw new Error("Firestore is not initialized.");
   const confRef = doc(db, "smogReports", reportId, "confirmations", uid);
   const reportRef = doc(db, "smogReports", reportId);
   const path = `smogReports/${reportId}/confirmations/${uid}`;
 
   try {
-    const existingConf = await getDoc(confRef);
-    if (existingConf.exists()) {
-      throw new Error("DUPLICATE_CONFIRMATION");
-    }
-
-    const batch = writeBatch(db);
-    batch.set(confRef, {
-      uid,
-      reportId,
-      createdAt: serverTimestamp(),
-    });
-    batch.update(reportRef, {
-      confirmationsCount: currentCount + 1,
-      updatedAt: serverTimestamp(),
-    });
-    await batch.commit();
+    return await runTransaction(db, async (tx) =>
+      applyAtomicConfirmationTx({
+        tx: tx as unknown as ConfirmationTransactionAdapter,
+        confRef,
+        reportRef,
+        uid,
+        reportId,
+        timestampValue: serverTimestamp(),
+      })
+    );
   } catch (err) {
-    if (err instanceof Error && err.message === "DUPLICATE_CONFIRMATION") {
+    if (
+      err instanceof Error &&
+      (err.message === "DUPLICATE_CONFIRMATION" ||
+        err.message === "REPORT_NOT_FOUND")
+    ) {
       throw err;
     }
     handleFirestoreError(err, OperationType.WRITE, path);

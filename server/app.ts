@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import express, {
   type NextFunction,
   type Request,
@@ -5,7 +6,8 @@ import express, {
 } from "express";
 import helmet from "helmet";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
+import rateLimit, { type Store } from "express-rate-limit";
+import { z } from "zod";
 import { loadServerConfig, type ServerConfig } from "./config.ts";
 import { verifyBearerToken } from "./firebaseAdmin.ts";
 import {
@@ -27,13 +29,16 @@ import {
   runAskWithFallback,
   runGuidanceWithFallback,
 } from "./services/aiOrchestrator.ts";
+import { buildServerVerifiedAirContext } from "./services/verifiedAirContextBuilder.ts";
 import { verifyAndSanitizeImage } from "./utils/imageSanitizer.ts";
+import { createRateLimitStore, MemoryRateLimitStore } from "./utils/rateLimitStore.ts";
 import {
   AirQualityQuerySchema,
   AskRequestSchema,
+  AskResponseSchema,
   GuidanceRequestSchema,
+  GuidanceResponseSchema,
 } from "../src/domain/schemas.ts";
-import { z } from "zod";
 
 export interface AppDependencies {
   config?: ServerConfig;
@@ -44,11 +49,20 @@ export interface AppDependencies {
   ) => Promise<{ uid: string; email_verified?: boolean } | null>;
   enableRateLimit?: boolean;
   rateLimitMax?: number;
+  rateLimitStore?: Store;
+}
+
+interface RequestWithCaller extends Request {
+  verifiedUid?: string | null;
 }
 
 const UploadPhotoSchema = z.object({
   imageDataUrl: z.string().min(20).max(3_200_000),
 });
+
+function hashIdentifier(value: string): string {
+  return crypto.createHash("sha256").update(value).digest("hex").slice(0, 24);
+}
 
 export function createApp(deps: AppDependencies = {}) {
   const config = deps.config ?? loadServerConfig();
@@ -68,17 +82,12 @@ export function createApp(deps: AppDependencies = {}) {
   app.use(
     cors({
       origin(origin, callback) {
-        // Allow same-origin / server-to-server requests (no Origin header)
+        // Same-origin / server-to-server requests without an Origin header
         if (!origin) {
           callback(null, true);
           return;
         }
         if (config.allowedOrigins.includes(origin)) {
-          callback(null, true);
-          return;
-        }
-        // Allow AI Studio / Cloud Run preview origins (*.run.app)
-        if (/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.run\.app$/i.test(origin)) {
           callback(null, true);
           return;
         }
@@ -94,24 +103,77 @@ export function createApp(deps: AppDependencies = {}) {
   app.use(express.json({ limit: "256kb" }));
 
   const limiterEnabled = deps.enableRateLimit !== false;
+  const apiStore =
+    deps.rateLimitStore instanceof MemoryRateLimitStore
+      ? new MemoryRateLimitStore({
+          sharedHits: deps.rateLimitStore.hits,
+          prefix: "api:",
+        })
+      : (deps.rateLimitStore ?? createRateLimitStore(config, fetchImpl));
+  const aiStore =
+    deps.rateLimitStore instanceof MemoryRateLimitStore
+      ? new MemoryRateLimitStore({
+          sharedHits: deps.rateLimitStore.hits,
+          prefix: "ai:",
+        })
+      : (deps.rateLimitStore ?? createRateLimitStore(config, fetchImpl));
+
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
     limit: deps.rateLimitMax ?? 40,
     standardHeaders: "draft-7",
     legacyHeaders: false,
+    store: apiStore,
     skip: () => !limiterEnabled,
+    keyGenerator: (req, _res) =>
+      `api:${hashIdentifier(req.socket.remoteAddress || req.ip || "unknown")}`,
     message: {
       error:
         "Too many requests from this client. Please wait a minute and try again.",
     },
   });
 
+  const resolveAiCallerMiddleware = async (
+    req: RequestWithCaller,
+    res: Response,
+    next: NextFunction
+  ) => {
+    const decoded = await verifyTokenFn(req.headers.authorization);
+    req.verifiedUid =
+      decoded && decoded.email_verified !== false ? decoded.uid : null;
+
+    if (config.requireAiAuth && !req.verifiedUid) {
+      res.status(401).json({
+        error:
+          "Verified Firebase authentication is required to access AI endpoints.",
+      });
+      return;
+    }
+    next();
+  };
+
   const aiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    limit: deps.rateLimitMax ?? 20,
+    limit: (req) => {
+      if (deps.rateLimitMax !== undefined) {
+        return deps.rateLimitMax;
+      }
+      const caller = req as RequestWithCaller;
+      return caller.verifiedUid
+        ? config.aiAuthenticatedRateLimitMax
+        : config.aiAnonymousRateLimitMax;
+    },
     standardHeaders: "draft-7",
     legacyHeaders: false,
+    store: aiStore,
     skip: () => !limiterEnabled,
+    keyGenerator: (req, _res) => {
+      const caller = req as RequestWithCaller;
+      if (caller.verifiedUid) {
+        return `ai:user:${hashIdentifier(caller.verifiedUid)}`;
+      }
+      return `ai:anon:${hashIdentifier(req.socket.remoteAddress || req.ip || "unknown")}`;
+    },
     message: {
       error:
         "AI request rate limit reached. Please wait a minute before asking again.",
@@ -119,18 +181,60 @@ export function createApp(deps: AppDependencies = {}) {
   });
 
   app.get("/api/health", (_req: Request, res: Response) => {
+    const geminiConfigured =
+      deps.geminiClient !== undefined
+        ? Boolean(deps.geminiClient)
+        : Boolean(config.geminiApiKey);
+    const groqConfigured = Boolean(config.groqApiKey);
+
+    const primaryConfigured =
+      config.aiProvider === "gemini" ? geminiConfigured : groqConfigured;
+    const primaryModel =
+      config.aiProvider === "gemini" ? config.geminiModel : config.groqModel;
+
+    const fallbackConfigured =
+      config.aiFallbackProvider === "gemini"
+        ? geminiConfigured
+        : config.aiFallbackProvider === "groq"
+          ? groqConfigured
+          : false;
+    const fallbackModel =
+      config.aiFallbackProvider === "gemini"
+        ? config.geminiModel
+        : config.aiFallbackProvider === "groq"
+          ? config.groqModel
+          : null;
+
     res.json({
       ok: true,
       service: "breathewise",
       environment: config.nodeEnv,
       capabilities: {
-        geminiConfigured: Boolean(config.geminiApiKey),
+        activeProvider: config.aiProvider,
+        primaryProvider: {
+          provider: config.aiProvider,
+          model: primaryModel,
+          configured: primaryConfigured,
+        },
+        fallbackProvider: {
+          provider: config.aiFallbackProvider,
+          model: fallbackModel,
+          configured: fallbackConfigured,
+          enabled: Boolean(config.aiFallbackProvider && fallbackConfigured),
+        },
+        geminiConfigured,
         geminiModel: config.geminiModel,
-        groqConfigured: Boolean(config.groqApiKey),
+        groqConfigured,
         groqModel: config.groqModel,
-        aiFallbackEnabled: Boolean(config.geminiApiKey && config.groqApiKey),
+        aiFallbackEnabled: Boolean(
+          config.aiFallbackProvider && fallbackConfigured
+        ),
         cpcbApiConfigured: Boolean(config.dataGovInApiKey),
         openMeteoEnabled: true,
+        aiAuthRequired: config.requireAiAuth,
+        distributedRateLimitConfigured: Boolean(
+          config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken
+        ),
       },
       cache: {
         cpcb: getCpcbCacheStats(),
@@ -190,6 +294,7 @@ export function createApp(deps: AppDependencies = {}) {
 
   app.post(
     "/api/gemini/guidance",
+    resolveAiCallerMiddleware,
     aiLimiter,
     async (req: Request, res: Response) => {
       const client =
@@ -197,11 +302,18 @@ export function createApp(deps: AppDependencies = {}) {
           ? deps.geminiClient
           : createGeminiClient(config.geminiApiKey);
 
-      if (!client && !config.groqApiKey) {
+      const primaryConfigured =
+        config.aiProvider === "gemini"
+          ? Boolean(client)
+          : Boolean(config.groqApiKey);
+
+      if (!primaryConfigured) {
         res.status(503).json({
-          error:
-            "Neither GEMINI_API_KEY nor GROQ_API_KEY is configured in Settings > Secrets. Add an AI key to generate personalized AI guidance.",
-          code: "GEMINI_UNCONFIGURED",
+          error: `Primary AI provider (${config.aiProvider}) is not configured in Settings > Secrets.`,
+          code:
+            config.aiProvider === "gemini"
+              ? "GEMINI_UNCONFIGURED"
+              : "AI_UNCONFIGURED",
         });
         return;
       }
@@ -216,24 +328,35 @@ export function createApp(deps: AppDependencies = {}) {
       }
 
       try {
+        const verified = await buildServerVerifiedAirContext({
+          location: parsed.data.location,
+          dataGovInApiKey: config.dataGovInApiKey,
+          fetchImpl,
+        });
+
         const result = await runGuidanceWithFallback({
+          primaryProvider: config.aiProvider,
+          fallbackProvider: config.aiFallbackProvider,
           geminiClient: client,
           geminiModel: config.geminiModel,
           groqApiKey: config.groqApiKey,
           groqModel: config.groqModel,
-          airContext: parsed.data.airContext,
+          airContext: verified.airContext,
           household: parsed.data.household,
           fetchImpl,
         });
 
-        res.json({
+        const responseBody = GuidanceResponseSchema.parse({
           guidance: result.guidance,
           provider: result.provider,
           model: result.model,
           fallbackUsed: result.fallbackUsed,
           fallbackReason: result.fallbackReason,
+          dataProvenance: verified.dataProvenance,
           generatedAtIso: new Date().toISOString(),
         });
+
+        res.json(responseBody);
       } catch (err) {
         if (err instanceof AiOrchestrationError) {
           res.status(err.status).json({
@@ -253,6 +376,7 @@ export function createApp(deps: AppDependencies = {}) {
 
   app.post(
     "/api/gemini/ask",
+    resolveAiCallerMiddleware,
     aiLimiter,
     async (req: Request, res: Response) => {
       const client =
@@ -260,11 +384,18 @@ export function createApp(deps: AppDependencies = {}) {
           ? deps.geminiClient
           : createGeminiClient(config.geminiApiKey);
 
-      if (!client && !config.groqApiKey) {
+      const primaryConfigured =
+        config.aiProvider === "gemini"
+          ? Boolean(client)
+          : Boolean(config.groqApiKey);
+
+      if (!primaryConfigured) {
         res.status(503).json({
-          error:
-            "Neither GEMINI_API_KEY nor GROQ_API_KEY is configured in Settings > Secrets. Add an AI key to chat with AI Family Guardian.",
-          code: "GEMINI_UNCONFIGURED",
+          error: `Primary AI provider (${config.aiProvider}) is not configured in Settings > Secrets.`,
+          code:
+            config.aiProvider === "gemini"
+              ? "GEMINI_UNCONFIGURED"
+              : "AI_UNCONFIGURED",
         });
         return;
       }
@@ -279,26 +410,37 @@ export function createApp(deps: AppDependencies = {}) {
       }
 
       try {
+        const verified = await buildServerVerifiedAirContext({
+          location: parsed.data.location,
+          dataGovInApiKey: config.dataGovInApiKey,
+          fetchImpl,
+        });
+
         const result = await runAskWithFallback({
+          primaryProvider: config.aiProvider,
+          fallbackProvider: config.aiFallbackProvider,
           geminiClient: client,
           geminiModel: config.geminiModel,
           groqApiKey: config.groqApiKey,
           groqModel: config.groqModel,
           question: parsed.data.question,
-          airContext: parsed.data.airContext,
+          airContext: verified.airContext,
           household: parsed.data.household,
           completedRoutines: parsed.data.completedRoutines,
           fetchImpl,
         });
 
-        res.json({
+        const responseBody = AskResponseSchema.parse({
           answer: result.answer,
           provider: result.provider,
           model: result.model,
           fallbackUsed: result.fallbackUsed,
           fallbackReason: result.fallbackReason,
+          dataProvenance: verified.dataProvenance,
           generatedAtIso: new Date().toISOString(),
         });
+
+        res.json(responseBody);
       } catch (err) {
         if (err instanceof AiOrchestrationError) {
           res.status(err.status).json({
@@ -316,7 +458,7 @@ export function createApp(deps: AppDependencies = {}) {
     }
   );
 
-  // Protected route: verifies Firebase ID token, validates binary magic bytes, strips EXIF/GPS metadata
+  // Protected route: verifies Firebase ID token, binary-decodes via sharp, strips EXIF/GPS & re-encodes to WebP
   app.post(
     "/api/uploads/smog-photo",
     apiLimiter,
@@ -346,10 +488,15 @@ export function createApp(deps: AppDependencies = {}) {
       }
 
       try {
-        const sanitized = verifyAndSanitizeImage(parsed.data.imageDataUrl);
+        const sanitized = await verifyAndSanitizeImage(
+          parsed.data.imageDataUrl
+        );
         res.json({
           photoDataUrl: sanitized.dataUrl,
           format: sanitized.format,
+          mimeType: sanitized.mimeType,
+          width: sanitized.width,
+          height: sanitized.height,
           sanitizedBytes: sanitized.sanitizedBytes,
           metadataStripped: sanitized.metadataStripped,
         });

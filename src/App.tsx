@@ -26,7 +26,6 @@ import type {
   HouseholdContext,
   SmogSourceCategory,
   StructuredGuidance,
-  VerifiedAirContext,
 } from "./domain/schemas";
 import { useFirebase } from "./firebase/FirebaseProvider";
 import {
@@ -272,47 +271,29 @@ export function App() {
     return measured.stations[selectedCpcbIndex] ?? measured.stations[0];
   }, [measured, selectedCpcbIndex]);
 
-  const verifiedAirContext: VerifiedAirContext = useMemo(() => {
-    return {
-      locationLabel: `${activeLocation.city}, ${activeLocation.state}`,
-      state: activeLocation.state,
-      measuredStationName: activeCpcbStation?.stationName ?? null,
-      measuredAqi: activeCpcbStation?.indianAqi.aqi ?? null,
-      measuredAqiCategory: activeCpcbStation?.indianAqi.category ?? null,
-      measuredTimestamp:
-        activeCpcbStation?.lastUpdatedIso ??
-        activeCpcbStation?.lastUpdatedRaw ??
-        null,
-      measuredSourceAvailable: measured?.status === "available",
-      modelledPm25: modelled?.currentPollutants.pm25 ?? null,
-      modelledPm10: modelled?.currentPollutants.pm10 ?? null,
-      modelledNo2: modelled?.currentPollutants.no2 ?? null,
-      modelledSo2: modelled?.currentPollutants.so2 ?? null,
-      modelledOzone: modelled?.currentPollutants.ozone ?? null,
-      modelledCoUgm3: modelled?.currentPollutants.coUgm3 ?? null,
-      modelledAqiEstimate: modelled?.indianAqiFromRollingModel.aqi ?? null,
-      modelledTimestamp: modelled?.currentTimeIso ?? null,
-      temperatureC: modelled?.weather.temperatureC ?? null,
-      humidityPct: modelled?.weather.humidityPct ?? null,
-      windKmh: modelled?.weather.windKmh ?? null,
-      boundaryLayerHeightM: modelled?.weather.boundaryLayerHeightM ?? null,
-      bestForecastWindow: modelled?.bestLowerPmWindow ?? null,
-      dataLimitations:
-        measured?.status !== "available"
-          ? "Official CPCB station telemetry unavailable; assessment relies on Open-Meteo regional atmospheric forecast."
-          : "CPCB readings reflect stationary monitors; Open-Meteo values represent regional grid averages.",
-    };
-  }, [activeLocation, activeCpcbStation, measured, modelled]);
-
   const handleRefreshGuidance = useCallback(async () => {
     setGuidanceLoading(true);
     setGuidanceError(null);
     try {
+      const token = user ? await getIdToken() : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/gemini/guidance", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
-          airContext: verifiedAirContext,
+          location: {
+            city: activeLocation.city,
+            state: activeLocation.state,
+            latitude: activeLocation.latitude,
+            longitude: activeLocation.longitude,
+            preferredStationName: activeCpcbStation?.stationName,
+          },
           household,
         }),
       });
@@ -346,7 +327,7 @@ export function App() {
     } finally {
       setGuidanceLoading(false);
     }
-  }, [verifiedAirContext, household]);
+  }, [activeLocation, activeCpcbStation, household, user, getIdToken]);
 
   const activeRoutines = user && cloudRoutines ? cloudRoutines : localRoutines;
 
@@ -356,12 +337,26 @@ export function App() {
         .filter((r) => r.completedToday)
         .map((r) => r.title);
 
+      const token = user ? await getIdToken() : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/gemini/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           question,
-          airContext: verifiedAirContext,
+          location: {
+            city: activeLocation.city,
+            state: activeLocation.state,
+            latitude: activeLocation.latitude,
+            longitude: activeLocation.longitude,
+            preferredStationName: activeCpcbStation?.stationName,
+          },
           household,
           completedRoutines: completedTitles,
         }),
@@ -387,7 +382,14 @@ export function App() {
         fallbackReason: data.fallbackReason,
       };
     },
-    [activeRoutines, verifiedAirContext, household]
+    [
+      activeRoutines,
+      activeLocation,
+      activeCpcbStation,
+      household,
+      user,
+      getIdToken,
+    ]
   );
 
   const handleHouseholdChange = useCallback(
@@ -512,11 +514,7 @@ export function App() {
       throw new Error("Sign in with Google to confirm community reports.");
     }
     try {
-      await confirmSmogReportAtomic(
-        user.uid,
-        report.id,
-        report.confirmationsCount
-      );
+      await confirmSmogReportAtomic(user.uid, report.id);
       setConfirmedReportIds((prev) => new Set(prev).add(report.id));
     } catch (err) {
       if (err instanceof Error && err.message === "DUPLICATE_CONFIRMATION") {

@@ -11,26 +11,24 @@
 - **Air-Quality Providers**:
   - Primary measured provider: CPCB / `data.gov.in` resource `3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69`. Returns a structured unavailable state (`MISSING_API_KEY`) when `DATA_GOV_IN_API_KEY` is absent; never generates fictional station values.
   - Secondary modelled provider: Open-Meteo Air Quality & Weather API (`https://air-quality-api.open-meteo.com/v1/air-quality`), always displayed separately as atmospheric simulation.
-- **Gemini AI Integration**:
-  - Server-only `@google/genai` integration (`GEMINI_API_KEY` + `GEMINI_MODEL=gemini-4-hydrogen`) with structured JSON schema output validated by `StructuredGuidanceSchema` and prompt-injection framing (`<USER_QUESTION>` + control-character stripping). Returns `503` when `GEMINI_API_KEY` is unconfigured.
+- **AI Provider & Orchestration (Mission F1)**:
+  - Configurable primary provider (`AI_PROVIDER=gemini` or `groq`) and fallback provider (`AI_FALLBACK_PROVIDER=groq`).
+  - Server-verified air context builder (`server/services/verifiedAirContextBuilder.ts`) ensures clients cannot submit forged AQI values or spoofed CPCB station data.
+  - Multi-turn untrusted user query isolation with cryptographically secure boundary nonces against prompt injection and fake URLs.
 
-## 2. Security & Privacy Controls Verified
+## 2. Security & Privacy Controls Verified (Mission F1)
 
-- No API keys or service account credentials in client bundles (`VITE_` prefix restricted strictly to Firebase Web config).
-- Server-side photo upload endpoint (`POST /api/uploads/smog-photo`) checks verified Firebase ID token, inspects JPEG/PNG/WebP magic bytes, strips JPEG `APP1`/`COM`/`APP3–13`, PNG `eXIf`/`tEXt`/`zTXt`/`iTXt`/`tIME`, and WebP `EXIF`/`XMP ` chunks, and rejects spoofed binaries.
-- Public `smogReports` documents omit user email/displayName (`Anonymous Citizen Observer`) and prevent duplicate confirmations via atomic `writeBatch` paired with `/smogReports/{reportId}/confirmations/{uid}` rules.
+- **CORS Allowlist**: Wildcard patterns removed; exact allowed origins enforced in production.
+- **Community Report PII Isolation**: Public `smogReports/{reportId}` documents omit `authorUid` and private PII entirely. Ownership metadata (`authorUid`) is isolated to `/smogReports/{reportId}/private/owner` (readable only by the owner or admin).
+- **Atomic Confirmations**: Report confirmation counts are updated via Firestore transactions (`runTransaction`) preventing lost increments and duplicate confirmations.
+- **Image Security**: Full binary decode and re-encoding via `sharp` (`server/utils/imageSanitizer.ts`) supporting JPEG, PNG, and WebP, stripping EXIF/GPS metadata, rejecting animated images, polyglots, and pixel bombs.
+- **Error Log Privacy**: `src/firebase/errorHandling.ts` sanitizes operational logs to redact email addresses, UIDs, and tenant tokens.
 
 ## 3. Verified Commands & Results
 
-- `npx tsx --test src/domain/pureLogic.node-test.ts`: **Pass** (Indian AQI, Indoor ACH, Eco Impact).
-- `npm run test` (Vitest): **Pass** (7 files, 41 tests covering CPCB Indian AQI breakpoints/completeness, unit normalization, Indoor Air Coach, India GHG mobility factors, Zod schemas, binary EXIF stripping, Supertest Express API integration & rate limiting, React Testing Library component interactions, and `axe-core` WCAG checks).
-- `npm run lint` (`tsc --noEmit && eslint .`): **Pass** (0 TypeScript errors, 0 ESLint errors across `src/`, `server/`, `server.ts`, `tests/`, and `firestore.rules`).
-- `npm run build`: **Pass** (`vite build`).
-- Production server verification (`NODE_ENV=production node server.ts`): Verified `/api/health` and live Open-Meteo `/api/air-quality` responses on Node 22.
-- Headless Chromium browser verification (`playwright-cli` at `1440x900` and `390x844`): Verified live dashboard separation, city switching (Delhi → Chennai), Data Table toggle, routine completion counter, Tamil language switch, Report Smog accessible modal, zero console errors, and zero horizontal overflow on mobile (`390px`).
+- **Vitest Unit & Integration Tests**: `8 passed`, `50/50 tests passed` (including `tests/unit/securityAndPrivacy.test.ts` and `tests/integration/api.test.ts`).
+- **Node 22 Pure Logic Tests**: `1/1 passed` (`src/domain/pureLogic.node-test.ts`).
+- **TypeScript & ESLint (`npm run lint`)**: `Pass` (`tsc --noEmit && eslint .`, `0` errors).
+- **Production Build (`npm run build`)**: `Pass` (`dist/` generated cleanly).
+- **Repository Size**: `3.0 MB` (main branch only).
 
-## 4. Environment Secrets Needed for Full Live Providers
-
-To activate the two optional key-gated upstream integrations in deployment or AI Studio **Settings > Secrets**:
-- `GEMINI_API_KEY`: Enables live Gemini responses on `POST /api/gemini/guidance` and `POST /api/gemini/ask`.
-- `DATA_GOV_IN_API_KEY`: Enables live CPCB monitoring-station telemetry on `GET /api/air-quality`.

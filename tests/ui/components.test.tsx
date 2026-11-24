@@ -251,7 +251,6 @@ describe("BreatheWise UI Components & Accessibility", () => {
         reports={[
           {
             id: "rep-1",
-            authorUid: "anon",
             city: "Chennai",
             state: "Tamil Nadu",
             approximateLocation: "Near Velachery MRTS",

@@ -159,15 +159,9 @@
     },
     "SmogReport": {
       "title": "SmogReport",
-      "description": "Citizen smog observation without PII. Marked UNVERIFIED until moderated.",
+      "description": "Public citizen smog observation without authorUid or PII. Marked UNVERIFIED until moderated.",
       "type": "object",
       "properties": {
-        "authorUid": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
         "city": {
           "type": "string",
           "minLength": 2,
@@ -229,7 +223,6 @@
         }
       },
       "required": [
-        "authorUid",
         "city",
         "state",
         "approximateLocation",
@@ -242,6 +235,30 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "SmogReportOwner": {
+      "title": "SmogReportOwner",
+      "description": "Private ownership record for a citizen smog report, isolated from public reads.",
+      "type": "object",
+      "properties": {
+        "authorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["authorUid", "reportId", "createdAt"]
     },
     "SmogConfirmation": {
       "title": "SmogConfirmation",
@@ -334,7 +351,11 @@
     },
     "/smogReports/{reportId}": {
       "schema": { "$ref": "#/entities/SmogReport" },
-      "description": "Publicly viewable citizen smog observations without PII; requires verified auth to create."
+      "description": "Publicly viewable citizen smog observations without authorUid or PII; requires verified auth to create."
+    },
+    "/smogReports/{reportId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/SmogReportOwner" },
+      "description": "Private ownership metadata for smog report creator/admin only."
     },
     "/smogReports/{reportId}/confirmations/{uid}": {
       "schema": { "$ref": "#/entities/SmogConfirmation" },

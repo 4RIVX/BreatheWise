@@ -66,8 +66,16 @@ export const VerifiedAirContextSchema = z.object({
   dataLimitations: z.string().trim().max(400).optional(),
 });
 
+export const AiLocationInputSchema = z.object({
+  city: z.string().trim().min(1).max(80),
+  state: z.string().trim().max(80).optional(),
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+  preferredStationName: z.string().trim().max(120).optional(),
+});
+
 export const GuidanceRequestSchema = z.object({
-  airContext: VerifiedAirContextSchema,
+  location: AiLocationInputSchema,
   household: HouseholdContextSchema,
 });
 
@@ -93,9 +101,44 @@ export const StructuredGuidanceSchema = z.object({
 
 export const AskRequestSchema = z.object({
   question: z.string().trim().min(2).max(500),
-  airContext: VerifiedAirContextSchema,
+  location: AiLocationInputSchema,
   household: HouseholdContextSchema,
-  completedRoutines: z.array(z.string().max(120)).max(20).optional(),
+  completedRoutines: z
+    .array(z.string().trim().min(1).max(120))
+    .max(20)
+    .optional(),
+});
+
+export const DataProvenanceSchema = z.object({
+  measuredAvailable: z.boolean(),
+  measuredSource: z.literal("CPCB / data.gov.in").nullable(),
+  measuredStationCount: z.number().int().min(0),
+  measuredCached: z.boolean(),
+  modelledAvailable: z.boolean(),
+  modelledSource: z.literal("Open-Meteo Regional Forecast").nullable(),
+  modelledCached: z.boolean(),
+});
+
+export const AiAnswerTextSchema = z.string().trim().min(5).max(3000);
+
+export const AskResponseSchema = z.object({
+  answer: AiAnswerTextSchema,
+  provider: z.enum(["gemini", "groq"]),
+  model: z.string().trim().min(1).max(120),
+  fallbackUsed: z.boolean(),
+  fallbackReason: z.string().max(300).nullable(),
+  dataProvenance: DataProvenanceSchema,
+  generatedAtIso: z.string().min(10).max(60),
+});
+
+export const GuidanceResponseSchema = z.object({
+  guidance: StructuredGuidanceSchema,
+  provider: z.enum(["gemini", "groq"]),
+  model: z.string().trim().min(1).max(120),
+  fallbackUsed: z.boolean(),
+  fallbackReason: z.string().max(300).nullable(),
+  dataProvenance: DataProvenanceSchema,
+  generatedAtIso: z.string().min(10).max(60),
 });
 
 export const SmogCategorySchema = z.enum([
@@ -124,6 +167,10 @@ export const SmogReportInputSchema = z.object({
     .optional(),
 });
 
+export type AiLocationInput = z.infer<typeof AiLocationInputSchema>;
+export type DataProvenance = z.infer<typeof DataProvenanceSchema>;
+export type AskResponsePayload = z.infer<typeof AskResponseSchema>;
+export type GuidanceResponsePayload = z.infer<typeof GuidanceResponseSchema>;
 export type StructuredGuidance = z.infer<typeof StructuredGuidanceSchema>;
 export type VerifiedAirContext = z.infer<typeof VerifiedAirContextSchema>;
 export type HouseholdContext = z.infer<typeof HouseholdContextSchema>;

@@ -1,3 +1,4 @@
+import type { AiProviderKind } from "../config.ts";
 import type {
   HouseholdContext,
   StructuredGuidance,
@@ -14,7 +15,7 @@ import {
   generateGroqFamilyGuidance,
 } from "./groqService.ts";
 
-export type AiProviderName = "gemini" | "groq";
+export type AiProviderName = AiProviderKind;
 
 export interface AiExecutionMetadata {
   provider: AiProviderName;
@@ -53,10 +54,57 @@ export class AiOrchestrationError extends Error {
   }
 }
 
+/**
+ * Only permit automatic fallback for transient availability/upstream outages,
+ * rate limits, timeouts, or network transport errors—never for bad inputs,
+ * invalid credentials, schema errors, or misconfigured model IDs.
+ */
+export function isAvailabilityFallbackEligible(errorText: string): boolean {
+  const lower = errorText.toLowerCase();
+  if (
+    lower.includes("api_key_invalid") ||
+    lower.includes("api key not valid") ||
+    lower.includes("question cannot be empty") ||
+    lower.includes("failed schema validation") ||
+    lower.includes("malformed json") ||
+    lower.includes("404 not_found") ||
+    lower.includes("permission_denied") ||
+    lower.includes("http 400") ||
+    lower.includes("http 401") ||
+    lower.includes("http 403") ||
+    lower.includes("http 404")
+  ) {
+    return false;
+  }
+
+  return (
+    lower.includes("429") ||
+    lower.includes("resource_exhausted") ||
+    lower.includes("503") ||
+    lower.includes("unavailable") ||
+    lower.includes("overloaded") ||
+    lower.includes("502") ||
+    lower.includes("504") ||
+    lower.includes("temporarily unavailable") ||
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("aborterror") ||
+    lower.includes("aborted") ||
+    lower.includes("econnreset") ||
+    lower.includes("econnrefused") ||
+    lower.includes("ehostunreach") ||
+    lower.includes("enotfound") ||
+    lower.includes("etimedout") ||
+    lower.includes("fetch failed") ||
+    lower.includes("network error")
+  );
+}
+
 function classifyProviderFailureStatus(errorText: string): number {
   if (
     errorText.includes("API_KEY_INVALID") ||
-    errorText.includes("API key not valid")
+    errorText.includes("API key not valid") ||
+    errorText.includes("HTTP 400")
   ) {
     return 400;
   }
@@ -66,10 +114,37 @@ function classifyProviderFailureStatus(errorText: string): number {
   if (errorText.includes("RESOURCE_EXHAUSTED") || errorText.includes("429")) {
     return 429;
   }
+  if (errorText.includes("503") || errorText.includes("UNAVAILABLE")) {
+    return 503;
+  }
   return 502;
 }
 
+function getProviderModel(
+  provider: AiProviderName,
+  geminiModel: string,
+  groqModel: string
+): string {
+  return provider === "gemini" ? geminiModel : groqModel;
+}
+
+function isProviderConfigured(
+  provider: AiProviderName,
+  geminiClient: GeminiClientLike | null,
+  groqApiKey: string
+): boolean {
+  return provider === "gemini"
+    ? Boolean(geminiClient)
+    : Boolean(groqApiKey.trim());
+}
+
+function capitalizeProvider(provider: AiProviderName): string {
+  return provider === "gemini" ? "Gemini" : "Groq";
+}
+
 export async function runGuidanceWithFallback(params: {
+  primaryProvider?: AiProviderName;
+  fallbackProvider?: AiProviderName | null;
   geminiClient: GeminiClientLike | null;
   geminiModel: string;
   groqApiKey: string;
@@ -79,6 +154,8 @@ export async function runGuidanceWithFallback(params: {
   fetchImpl?: typeof fetch;
 }): Promise<AiGuidanceExecution> {
   const {
+    primaryProvider = "gemini",
+    fallbackProvider = null,
     geminiClient,
     geminiModel,
     groqApiKey,
@@ -88,61 +165,112 @@ export async function runGuidanceWithFallback(params: {
     fetchImpl,
   } = params;
 
-  const hasGroq = Boolean(groqApiKey.trim());
-  if (!geminiClient && !hasGroq) {
+  const primaryConfigured = isProviderConfigured(
+    primaryProvider,
+    geminiClient,
+    groqApiKey
+  );
+  const fallbackConfigured =
+    fallbackProvider !== null &&
+    fallbackProvider !== primaryProvider &&
+    isProviderConfigured(fallbackProvider, geminiClient, groqApiKey);
+
+  if (!primaryConfigured && !fallbackConfigured) {
     throw new AiOrchestrationError({
-      message:
-        "Neither GEMINI_API_KEY nor GROQ_API_KEY is configured in Settings > Secrets. Add an AI API key to generate personalized AI guidance.",
+      message: `Primary provider ${capitalizeProvider(primaryProvider)} is unconfigured and no valid fallback provider is enabled.`,
       status: 503,
-      code: "AI_UNCONFIGURED",
+      code:
+        primaryProvider === "gemini"
+          ? "GEMINI_UNCONFIGURED"
+          : "AI_UNCONFIGURED",
     });
   }
 
-  let primaryError: string;
-
-  if (geminiClient) {
-    try {
-      const guidance = await generateFamilyGuidance({
+  const runSingle = async (
+    provider: AiProviderName
+  ): Promise<StructuredGuidance> => {
+    if (provider === "gemini") {
+      if (!geminiClient) {
+        throw new Error("GEMINI_API_KEY missing.");
+      }
+      return generateFamilyGuidance({
         client: geminiClient,
         model: geminiModel,
         airContext,
         household,
       });
-      return {
-        guidance,
-        provider: "gemini",
-        model: geminiModel,
-        fallbackUsed: false,
-        fallbackReason: null,
-      };
-    } catch (err) {
-      primaryError = sanitizeProviderError(err);
     }
-  } else {
-    primaryError =
-      "Primary provider Gemini is unconfigured (GEMINI_API_KEY missing).";
+    return generateGroqFamilyGuidance({
+      apiKey: groqApiKey,
+      model: groqModel,
+      airContext,
+      household,
+      fetchImpl,
+    });
+  };
+
+  if (!primaryConfigured) {
+    throw new AiOrchestrationError({
+      message: `Primary provider ${capitalizeProvider(primaryProvider)} is not configured in Settings > Secrets.`,
+      status: 503,
+      code:
+        primaryProvider === "gemini"
+          ? "GEMINI_UNCONFIGURED"
+          : "AI_UNCONFIGURED",
+    });
   }
 
-  if (hasGroq) {
-    try {
-      const guidance = await generateGroqFamilyGuidance({
-        apiKey: groqApiKey,
-        model: groqModel,
-        airContext,
-        household,
-        fetchImpl,
+  const primaryModel = getProviderModel(
+    primaryProvider,
+    geminiModel,
+    groqModel
+  );
+
+  try {
+    const guidance = await runSingle(primaryProvider);
+    return {
+      guidance,
+      provider: primaryProvider,
+      model: primaryModel,
+      fallbackUsed: false,
+      fallbackReason: null,
+    };
+  } catch (err) {
+    const primaryError = sanitizeProviderError(err);
+
+    if (
+      !fallbackConfigured ||
+      !fallbackProvider ||
+      !isAvailabilityFallbackEligible(primaryError)
+    ) {
+      throw new AiOrchestrationError({
+        message: fallbackProvider
+          ? `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) failed: ${primaryError}`
+          : `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) failed and no fallback provider is enabled: ${primaryError}`,
+        status: classifyProviderFailureStatus(primaryError),
+        code: `${primaryProvider.toUpperCase()}_UPSTREAM_FAILURE`,
+        primaryError,
       });
+    }
+
+    const secondaryModel = getProviderModel(
+      fallbackProvider,
+      geminiModel,
+      groqModel
+    );
+    try {
+      const guidance = await runSingle(fallbackProvider);
       return {
         guidance,
-        provider: "groq",
-        model: groqModel,
+        provider: fallbackProvider,
+        model: secondaryModel,
         fallbackUsed: true,
-        fallbackReason: `Primary Gemini (${geminiModel}) unavailable: ${primaryError}`,
+        fallbackReason: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`,
       };
-    } catch (err) {
-      const secondaryError = sanitizeProviderError(err);
+    } catch (secErr) {
+      const secondaryError = sanitizeProviderError(secErr);
       throw new AiOrchestrationError({
-        message: `Primary Gemini (${geminiModel}) and fallback Groq (${groqModel}) both failed. Gemini: ${primaryError}. Groq: ${secondaryError}`,
+        message: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) and fallback ${capitalizeProvider(fallbackProvider)} (${secondaryModel}) both failed. Primary: ${primaryError}. Fallback: ${secondaryError}`,
         status: classifyProviderFailureStatus(
           `${primaryError} ${secondaryError}`
         ),
@@ -152,16 +280,11 @@ export async function runGuidanceWithFallback(params: {
       });
     }
   }
-
-  throw new AiOrchestrationError({
-    message: `Primary Gemini (${geminiModel}) failed and no Groq fallback key is configured: ${primaryError}`,
-    status: classifyProviderFailureStatus(primaryError),
-    code: "GEMINI_UPSTREAM_FAILURE",
-    primaryError,
-  });
 }
 
 export async function runAskWithFallback(params: {
+  primaryProvider?: AiProviderName;
+  fallbackProvider?: AiProviderName | null;
   geminiClient: GeminiClientLike | null;
   geminiModel: string;
   groqApiKey: string;
@@ -173,6 +296,8 @@ export async function runAskWithFallback(params: {
   fetchImpl?: typeof fetch;
 }): Promise<AiAnswerExecution> {
   const {
+    primaryProvider = "gemini",
+    fallbackProvider = null,
     geminiClient,
     geminiModel,
     groqApiKey,
@@ -184,21 +309,44 @@ export async function runAskWithFallback(params: {
     fetchImpl,
   } = params;
 
-  const hasGroq = Boolean(groqApiKey.trim());
-  if (!geminiClient && !hasGroq) {
+  const primaryConfigured = isProviderConfigured(
+    primaryProvider,
+    geminiClient,
+    groqApiKey
+  );
+  const fallbackConfigured =
+    fallbackProvider !== null &&
+    fallbackProvider !== primaryProvider &&
+    isProviderConfigured(fallbackProvider, geminiClient, groqApiKey);
+
+  if (!primaryConfigured && !fallbackConfigured) {
     throw new AiOrchestrationError({
-      message:
-        "Neither GEMINI_API_KEY nor GROQ_API_KEY is configured in Settings > Secrets. Add an AI API key to chat with AI Family Guardian.",
+      message: `Primary provider ${capitalizeProvider(primaryProvider)} is unconfigured and no valid fallback provider is enabled.`,
       status: 503,
-      code: "AI_UNCONFIGURED",
+      code:
+        primaryProvider === "gemini"
+          ? "GEMINI_UNCONFIGURED"
+          : "AI_UNCONFIGURED",
     });
   }
 
-  let primaryError: string;
+  if (!primaryConfigured) {
+    throw new AiOrchestrationError({
+      message: `Primary provider ${capitalizeProvider(primaryProvider)} is not configured in Settings > Secrets.`,
+      status: 503,
+      code:
+        primaryProvider === "gemini"
+          ? "GEMINI_UNCONFIGURED"
+          : "AI_UNCONFIGURED",
+    });
+  }
 
-  if (geminiClient) {
-    try {
-      const answer = await askFamilyGuardian({
+  const runSingle = async (provider: AiProviderName): Promise<string> => {
+    if (provider === "gemini") {
+      if (!geminiClient) {
+        throw new Error("GEMINI_API_KEY missing.");
+      }
+      return askFamilyGuardian({
         client: geminiClient,
         model: geminiModel,
         question,
@@ -206,43 +354,69 @@ export async function runAskWithFallback(params: {
         household,
         completedRoutines,
       });
-      return {
-        answer,
-        provider: "gemini",
-        model: geminiModel,
-        fallbackUsed: false,
-        fallbackReason: null,
-      };
-    } catch (err) {
-      primaryError = sanitizeProviderError(err);
     }
-  } else {
-    primaryError =
-      "Primary provider Gemini is unconfigured (GEMINI_API_KEY missing).";
-  }
+    return askGroqFamilyGuardian({
+      apiKey: groqApiKey,
+      model: groqModel,
+      question,
+      airContext,
+      household,
+      completedRoutines,
+      fetchImpl,
+    });
+  };
 
-  if (hasGroq) {
-    try {
-      const answer = await askGroqFamilyGuardian({
-        apiKey: groqApiKey,
-        model: groqModel,
-        question,
-        airContext,
-        household,
-        completedRoutines,
-        fetchImpl,
+  const primaryModel = getProviderModel(
+    primaryProvider,
+    geminiModel,
+    groqModel
+  );
+
+  try {
+    const answer = await runSingle(primaryProvider);
+    return {
+      answer,
+      provider: primaryProvider,
+      model: primaryModel,
+      fallbackUsed: false,
+      fallbackReason: null,
+    };
+  } catch (err) {
+    const primaryError = sanitizeProviderError(err);
+
+    if (
+      !fallbackConfigured ||
+      !fallbackProvider ||
+      !isAvailabilityFallbackEligible(primaryError)
+    ) {
+      throw new AiOrchestrationError({
+        message: fallbackProvider
+          ? `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) failed: ${primaryError}`
+          : `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) failed and no fallback provider is enabled: ${primaryError}`,
+        status: classifyProviderFailureStatus(primaryError),
+        code: `${primaryProvider.toUpperCase()}_UPSTREAM_FAILURE`,
+        primaryError,
       });
+    }
+
+    const secondaryModel = getProviderModel(
+      fallbackProvider,
+      geminiModel,
+      groqModel
+    );
+    try {
+      const answer = await runSingle(fallbackProvider);
       return {
         answer,
-        provider: "groq",
-        model: groqModel,
+        provider: fallbackProvider,
+        model: secondaryModel,
         fallbackUsed: true,
-        fallbackReason: `Primary Gemini (${geminiModel}) unavailable: ${primaryError}`,
+        fallbackReason: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`,
       };
-    } catch (err) {
-      const secondaryError = sanitizeProviderError(err);
+    } catch (secErr) {
+      const secondaryError = sanitizeProviderError(secErr);
       throw new AiOrchestrationError({
-        message: `Primary Gemini (${geminiModel}) and fallback Groq (${groqModel}) both failed. Gemini: ${primaryError}. Groq: ${secondaryError}`,
+        message: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) and fallback ${capitalizeProvider(fallbackProvider)} (${secondaryModel}) both failed. Primary: ${primaryError}. Fallback: ${secondaryError}`,
         status: classifyProviderFailureStatus(
           `${primaryError} ${secondaryError}`
         ),
@@ -252,11 +426,4 @@ export async function runAskWithFallback(params: {
       });
     }
   }
-
-  throw new AiOrchestrationError({
-    message: `Primary Gemini (${geminiModel}) failed and no Groq fallback key is configured: ${primaryError}`,
-    status: classifyProviderFailureStatus(primaryError),
-    code: "GEMINI_UPSTREAM_FAILURE",
-    primaryError,
-  });
 }
