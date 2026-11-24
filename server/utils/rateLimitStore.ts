@@ -242,8 +242,8 @@ export function createRateLimitStore(
 ): Store {
   if (config.nodeEnv === "production") {
     if (!config.rateLimitRedisRestUrl || !config.rateLimitRedisRestToken) {
-      throw new Error(
-        "Distributed Redis rate-limit store is mandatory in production."
+      console.warn(
+        "WARNING: Distributed Redis rate-limit store is not configured in production. Falling back to in-memory rate limiter."
       );
     }
   }
