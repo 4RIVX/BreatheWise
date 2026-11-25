@@ -49,6 +49,15 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
+  if (
+    config.nodeEnv === "production" &&
+    config.rateLimitMode === "single-instance-memory"
+  ) {
+    console.warn(
+      "[BreatheWise] Starting in single-instance memory rate-limit mode. Set DEPLOYMENT_TOPOLOGY=multi-instance with RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN for multi-instance Cloud Run scaling."
+    );
+  }
+
   app.listen(config.port, config.host, () => {
     console.log(
       `BreatheWise server listening on http://${config.host}:${config.port}`

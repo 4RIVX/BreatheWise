@@ -64,6 +64,8 @@ export function createHealthRouter(params: {
         openAqApiConfigured: Boolean(config.openAqApiKey),
         openMeteoEnabled: true,
         aiAuthRequired: config.requireAiAuth,
+        deploymentTopology: config.deploymentTopology,
+        rateLimitMode: config.rateLimitMode,
         distributedRateLimitConfigured: Boolean(
           config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken
         ),

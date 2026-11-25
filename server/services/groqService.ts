@@ -30,6 +30,29 @@ const GroqResponseSchema = z.object({
     .min(1),
 });
 
+const GroqErrorResponseSchema = z.object({
+  error: z
+    .object({
+      message: z.string().optional(),
+      code: z.string().optional(),
+    })
+    .optional(),
+});
+
+async function parseGroqErrorDetail(res: Response): Promise<string> {
+  let detail = `HTTP ${res.status}`;
+  try {
+    const raw: unknown = await res.json();
+    const parsedErr = GroqErrorResponseSchema.safeParse(raw);
+    if (parsedErr.success && parsedErr.data.error?.message) {
+      detail = `${detail}: ${parsedErr.data.error.message}`;
+    }
+  } catch {
+    // Ignore JSON parse error on error response
+  }
+  return detail;
+}
+
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -87,17 +110,7 @@ async function callGroqChatCompletion(params: {
   }
 
   if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const errJson = (await res.json()) as {
-        error?: { message?: string; code?: string };
-      };
-      if (errJson?.error?.message) {
-        detail = `${detail}: ${errJson.error.message}`;
-      }
-    } catch {
-      // Ignore JSON parse error on error response
-    }
+    const detail = await parseGroqErrorDetail(res);
     throw new Error(`Groq API error (${detail})`);
   }
 

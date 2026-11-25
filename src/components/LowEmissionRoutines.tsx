@@ -25,6 +25,17 @@ const CATEGORIES: ("All" | RoutineCategory)[] = [
   "Community",
 ];
 
+function isRoutineCategory(value: string): value is RoutineCategory {
+  return (
+    value === "Mobility" ||
+    value === "Heating" ||
+    value === "Ventilation" ||
+    value === "Energy" ||
+    value === "Waste" ||
+    value === "Community"
+  );
+}
+
 export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
   routines,
   onToggleRoutine,
@@ -211,9 +222,11 @@ export const LowEmissionRoutines: React.FC<LowEmissionRoutinesProps> = ({
             <select
               id="new-routine-category"
               value={newCategory}
-              onChange={(e) =>
-                setNewCategory(e.target.value as RoutineCategory)
-              }
+              onChange={(e) => {
+                if (isRoutineCategory(e.target.value)) {
+                  setNewCategory(e.target.value);
+                }
+              }}
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             >
               <option value="Mobility">Mobility</option>

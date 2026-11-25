@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Search, ThumbsUp } from "lucide-react";
 import type { FirestoreSmogReport } from "../firebase/firestoreService";
-import type { SmogSourceCategory } from "../domain/schemas";
+import { SmogCategorySchema, type SmogSourceCategory } from "../domain/schemas";
 import type { TranslationBundle } from "../domain/i18n";
 
 interface CommunitySmogWatchProps {
@@ -55,6 +55,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
   >("All");
   const [onlyActiveCity, setOnlyActiveCity] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
 
   const filteredReports = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -92,8 +93,12 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
 
   const handleConfirm = async (rep: FirestoreSmogReport) => {
     setConfirmError(null);
+    setConfirmStatus(null);
     try {
       await onConfirmReport(rep);
+      setConfirmStatus(
+        `Confirmed smog observation at ${rep.approximateLocation}.`
+      );
     } catch (err) {
       setConfirmError(
         err instanceof Error ? err.message : "Could not confirm sighting."
@@ -128,6 +133,11 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
       {confirmError && (
         <p role="alert" className="text-xs text-rose-700 font-medium">
           {confirmError}
+        </p>
+      )}
+      {confirmStatus && (
+        <p role="status" className="text-xs text-teal-800 font-medium">
+          {confirmStatus}
         </p>
       )}
 
@@ -173,9 +183,15 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
           <select
             aria-label="Filter reports by pollution category"
             value={categoryFilter}
-            onChange={(e) =>
-              setCategoryFilter(e.target.value as "All" | SmogSourceCategory)
-            }
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "All") {
+                setCategoryFilter("All");
+                return;
+              }
+              const parsed = SmogCategorySchema.safeParse(val);
+              if (parsed.success) setCategoryFilter(parsed.data);
+            }}
             className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           >
             {CATEGORY_FILTERS.map((cat) => (
@@ -273,6 +289,13 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
                   type="button"
                   disabled={!isSignedIn || alreadyConfirmed}
                   onClick={() => handleConfirm(rep)}
+                  aria-label={
+                    alreadyConfirmed
+                      ? `Confirmed sighting at ${rep.approximateLocation} (${rep.confirmationsCount} confirmations)`
+                      : isSignedIn
+                        ? `Confirm sighting at ${rep.approximateLocation} (${rep.confirmationsCount} confirmations)`
+                        : `Sign in to confirm sighting at ${rep.approximateLocation} (${rep.confirmationsCount} confirmations)`
+                  }
                   className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 disabled:opacity-60 border border-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 self-start cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
                 >
                   <ThumbsUp

@@ -55,25 +55,42 @@ export function sanitizeLocationLabel(raw: string): string {
   return sanitizeUserQuestion(raw).slice(0, 80);
 }
 
+function extractProviderErrorMessage(rawJson: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(rawJson);
+    if (!parsed || typeof parsed !== "object" || !("error" in parsed)) {
+      return null;
+    }
+    const errObj = parsed.error;
+    if (!errObj || typeof errObj !== "object") return null;
+    const message =
+      "message" in errObj && typeof errObj.message === "string"
+        ? errObj.message
+        : null;
+    if (!message) return null;
+    const code =
+      "code" in errObj && typeof errObj.code === "number"
+        ? String(errObj.code)
+        : null;
+    const status =
+      "status" in errObj && typeof errObj.status === "string"
+        ? errObj.status
+        : null;
+    const prefix = [code, status].filter(Boolean).join(" ");
+    return prefix ? `HTTP ${prefix}: ${message}` : message;
+  } catch {
+    return null;
+  }
+}
+
 export function sanitizeProviderError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   let normalized = raw;
   const trimmed = raw.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    try {
-      const parsed = JSON.parse(trimmed) as {
-        error?: { code?: number; status?: string; message?: string };
-      };
-      if (parsed?.error?.message) {
-        const prefix = [parsed.error.code, parsed.error.status]
-          .filter(Boolean)
-          .join(" ");
-        normalized = prefix
-          ? `HTTP ${prefix}: ${parsed.error.message}`
-          : parsed.error.message;
-      }
-    } catch {
-      // Keep raw string if not JSON
+    const extracted = extractProviderErrorMessage(trimmed);
+    if (extracted) {
+      normalized = extracted;
     }
   }
   return normalized

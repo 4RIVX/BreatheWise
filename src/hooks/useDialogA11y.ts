@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "react";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -13,17 +13,28 @@ export function useDialogA11y(params: {
   open: boolean;
   dialogRef: RefObject<HTMLElement | null>;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  backgroundRef?: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
-  const { open, dialogRef, initialFocusRef, onClose } = params;
+  const { open, dialogRef, initialFocusRef, backgroundRef, onClose } = params;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
 
+    // Capture trigger BEFORE marking the background container inert (which causes browsers to blur activeElement).
     const previouslyFocused =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
+
+    const bgEl = backgroundRef?.current ?? null;
+    const hadInertAttr = bgEl?.hasAttribute("inert") ?? false;
+    const prevAriaHidden = bgEl?.getAttribute("aria-hidden") ?? null;
+
+    if (bgEl) {
+      bgEl.setAttribute("inert", "");
+      bgEl.setAttribute("aria-hidden", "true");
+    }
 
     const focusInitial = () => {
       if (initialFocusRef?.current) {
@@ -54,11 +65,28 @@ export function useDialogA11y(params: {
       const container = dialogRef.current;
       if (!container) return;
 
+      const isFocusableVisible = (el: HTMLElement): boolean => {
+        if (el === document.activeElement) return true;
+        if (
+          el.hidden ||
+          el.closest("[hidden], [inert], [aria-hidden='true']")
+        ) {
+          return false;
+        }
+        let current: HTMLElement | null = el;
+        while (current && current !== container) {
+          const style = window.getComputedStyle(current);
+          if (style.display === "none" || style.visibility === "hidden") {
+            return false;
+          }
+          current = current.parentElement;
+        }
+        return true;
+      };
+
       const focusables = Array.from(
         container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      ).filter(
-        (el) => el.offsetParent !== null || el === document.activeElement
-      );
+      ).filter(isFocusableVisible);
 
       if (focusables.length === 0) {
         e.preventDefault();
@@ -81,12 +109,25 @@ export function useDialogA11y(params: {
       }
     };
 
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", handleKeyDown);
     return () => {
+      if (bgEl) {
+        if (!hadInertAttr) {
+          bgEl.removeAttribute("inert");
+        }
+        if (prevAriaHidden === null) {
+          bgEl.removeAttribute("aria-hidden");
+        } else {
+          bgEl.setAttribute("aria-hidden", prevAriaHidden);
+        }
+      }
+      document.body.style.overflow = prevOverflow;
       document.removeEventListener("keydown", handleKeyDown);
       if (previouslyFocused && previouslyFocused.isConnected) {
         previouslyFocused.focus();
       }
     };
-  }, [open, dialogRef, initialFocusRef, onClose]);
+  }, [open, dialogRef, initialFocusRef, backgroundRef, onClose]);
 }

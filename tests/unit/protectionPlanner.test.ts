@@ -70,7 +70,9 @@ describe("Personalized Daily Protection Planner", () => {
 
     expect(plan.riskTier).toBe("Unknown");
     expect(plan.maskRecommended).toBe(true);
-    expect(plan.maskNote).toContain("Air-quality data is currently unavailable");
+    expect(plan.maskNote).toContain(
+      "Air-quality data is currently unavailable"
+    );
     expect(plan.ventilationWindowNote).toContain(
       "Air-quality data is currently unavailable"
     );
@@ -93,6 +95,8 @@ describe("Personalized Daily Protection Planner", () => {
       (s) => s.id === "ventilation-window"
     );
     expect(ventStep?.title).toContain("O3/NO2");
-    expect(ventStep?.rationale).toContain("model forecasts carry local grid uncertainty");
+    expect(ventStep?.rationale).toContain(
+      "model forecasts carry local grid uncertainty"
+    );
   });
 });

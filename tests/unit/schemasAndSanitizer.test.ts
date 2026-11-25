@@ -10,6 +10,7 @@ import {
   verifyAndSanitizeImage,
 } from "../../server/utils/imageSanitizer";
 import { sanitizeUserQuestion } from "../../server/services/geminiService";
+import { readJsonResponse } from "../../src/utils/safeFetchJson";
 
 async function createRealJpegWithExifAndGps(): Promise<string> {
   const buf = await sharp({
@@ -292,5 +293,25 @@ describe("Zod Schemas, Prompt Injection Sanitizer, and Binary Image Re-encoder",
       verifyAndSanitizeImage("data:image/png;base64,ABCDE")
     ).rejects.toThrow(/Invalid base64 image encoding/i);
   });
-});
 
+  it("safely rejects empty, non-JSON HTML, and array responses in readJsonResponse", async () => {
+    await expect(
+      readJsonResponse(new Response("", { status: 502 }))
+    ).rejects.toThrow(/empty response \(HTTP 502\)/i);
+
+    await expect(
+      readJsonResponse(
+        new Response("<html>502 Bad Gateway</html>", { status: 502 })
+      )
+    ).rejects.toThrow(/non-JSON response \(HTTP 502\)/i);
+
+    await expect(
+      readJsonResponse(new Response("[1, 2, 3]", { status: 200 }))
+    ).rejects.toThrow(/Unexpected response format/i);
+
+    const valid = await readJsonResponse<{ ok: boolean }>(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+    expect(valid.ok).toBe(true);
+  });
+});

@@ -249,7 +249,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                 <div>
-                  <p className="text-xs font-medium text-slate-500">
+                  <p className="text-xs font-medium text-slate-600">
                     Outdoor Activity Timing
                   </p>
                   <p className="text-sm text-slate-800 mt-1 leading-relaxed">
@@ -257,7 +257,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-slate-500">
+                  <p className="text-xs font-medium text-slate-600">
                     Mask & Respirator Guidance
                   </p>
                   <p className="text-sm text-slate-800 mt-1 leading-relaxed">
@@ -268,7 +268,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                 <div>
-                  <p className="text-xs font-medium text-slate-500 mb-2">
+                  <p className="text-xs font-medium text-slate-600 mb-2">
                     Household Recommendations
                   </p>
                   <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">
@@ -278,7 +278,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                   </ul>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-slate-500 mb-2">
+                  <p className="text-xs font-medium text-slate-600 mb-2">
                     Activities to Limit
                   </p>
                   <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">
@@ -290,7 +290,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
               </div>
 
               <div className="pt-4 border-t border-slate-100 space-y-2">
-                <p className="text-xs font-medium text-slate-500">
+                <p className="text-xs font-medium text-slate-600">
                   Indoor Protection & Commuting
                 </p>
                 <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">
@@ -305,7 +305,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
               </div>
 
               <div className="pt-4 border-t border-slate-100 space-y-2">
-                <p className="text-xs font-medium text-slate-500">
+                <p className="text-xs font-medium text-slate-600">
                   Next 24-Hour Action Plan & Reasoning
                 </p>
                 <ol className="space-y-1.5 text-sm text-slate-700 list-decimal pl-4">

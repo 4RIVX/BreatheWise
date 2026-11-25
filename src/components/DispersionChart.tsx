@@ -180,7 +180,7 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
                     x={padLeft - 8}
                     y={y + 3}
                     textAnchor="end"
-                    className="fill-slate-500 text-[10px] font-mono tabular-nums"
+                    className="fill-slate-600 text-[10px] font-mono tabular-nums"
                   >
                     {val}
                   </text>
@@ -250,7 +250,7 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
                       x={cx}
                       y={height - 10}
                       textAnchor="middle"
-                      className="fill-slate-500 text-[10px] font-mono tabular-nums"
+                      className="fill-slate-600 text-[10px] font-mono tabular-nums"
                     >
                       {p.hourLabel}
                     </text>
@@ -266,7 +266,7 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
                     cx={cx}
                     cy={cyWind}
                     r={isActive ? 3.5 : 2}
-                    className="fill-slate-500"
+                    className="fill-slate-600"
                   />
 
                   <rect
@@ -284,14 +284,14 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
             <text
               x={width - padRight + 8}
               y={padTop + 6}
-              className="fill-slate-500 text-[10px] font-mono"
+              className="fill-slate-600 text-[10px] font-mono"
             >
               {Math.round(maxWind)} km/h
             </text>
             <text
               x={width - padRight + 8}
               y={padTop + plotH}
-              className="fill-slate-500 text-[10px] font-mono"
+              className="fill-slate-600 text-[10px] font-mono"
             >
               0
             </text>

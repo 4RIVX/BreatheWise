@@ -47,6 +47,9 @@ const BASE_CONFIG: ServerConfig = {
   allowedOrigins: ["http://localhost:3000"],
   rateLimitRedisRestUrl: "",
   rateLimitRedisRestToken: "",
+  deploymentTopology: "single-instance",
+  requireDistributedRateLimit: false,
+  rateLimitMode: "single-instance-memory",
   aiAnonymousRateLimitMax: 6,
   aiAuthenticatedRateLimitMax: 20,
   requireAiAuth: false,
@@ -273,23 +276,25 @@ describe("Express API Integration & Security Tests", () => {
       configured: true,
       enabled: true,
     });
+    expect(res.body.capabilities.deploymentTopology).toBe("single-instance");
+    expect(res.body.capabilities.rateLimitMode).toBe("single-instance-memory");
     expect(JSON.stringify(res.body)).not.toContain("secret-g");
     expect(JSON.stringify(res.body)).not.toContain("secret-k");
   });
 
   it("validates ServerConfig strictly against invalid providers, wildcards, missing production origins, and missing production Redis", () => {
-    expect(() =>
-      loadServerConfig({ AI_PROVIDER: "unknown-llm" })
-    ).toThrow(/Invalid AI_PROVIDER/i);
+    expect(() => loadServerConfig({ AI_PROVIDER: "unknown-llm" })).toThrow(
+      /Invalid AI_PROVIDER/i
+    );
     expect(() =>
       loadServerConfig({
         AI_PROVIDER: "gemini",
         AI_FALLBACK_PROVIDER: "gemini",
       })
     ).toThrow(/cannot match/i);
-    expect(() =>
-      loadServerConfig({ ALLOWED_ORIGIN: "*" })
-    ).toThrow(/Wildcard/i);
+    expect(() => loadServerConfig({ ALLOWED_ORIGIN: "*" })).toThrow(
+      /Wildcard/i
+    );
     const defaultProdConfig = loadServerConfig({
       NODE_ENV: "production",
       ALLOWED_ORIGIN: "",
@@ -300,7 +305,9 @@ describe("Express API Integration & Security Tests", () => {
       NODE_ENV: "production",
       ALLOWED_ORIGIN: "https://breathewise.example",
     });
-    expect(redisFallbackProdConfig.allowedOrigins).toEqual(["https://breathewise.example"]);
+    expect(redisFallbackProdConfig.allowedOrigins).toEqual([
+      "https://breathewise.example",
+    ]);
 
     expect(() =>
       loadServerConfig({
@@ -317,11 +324,59 @@ describe("Express API Integration & Security Tests", () => {
       ALLOWED_ORIGIN: "https://breathewise.example",
       RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
       RATE_LIMIT_REDIS_REST_TOKEN: "tok",
+      DEPLOYMENT_TOPOLOGY: "multi-instance",
       AI_PROVIDER: "gemini",
       AI_FALLBACK_PROVIDER: "groq",
     });
     expect(prodConfig.allowedOrigins).toEqual(["https://breathewise.example"]);
     expect(prodConfig.aiFallbackProvider).toBe("groq");
+    expect(prodConfig.deploymentTopology).toBe("multi-instance");
+    expect(prodConfig.rateLimitMode).toBe("distributed-redis");
+
+    // Partial Redis config must fail fast at startup (never silently downgrade)
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
+      })
+    ).toThrow(/Partial Redis/i);
+
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        RATE_LIMIT_REDIS_REST_TOKEN: "tok",
+      })
+    ).toThrow(/Partial Redis/i);
+
+    // Non-HTTPS Redis URL must be rejected in production (non-loopback)
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        RATE_LIMIT_REDIS_REST_URL: "http://redis.external.example",
+        RATE_LIMIT_REDIS_REST_TOKEN: "tok",
+      })
+    ).toThrow(/https:/i);
+
+    // Multi-instance production without Redis must fail fast
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        DEPLOYMENT_TOPOLOGY: "multi-instance",
+      })
+    ).toThrow(/Multi-instance production/i);
+
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        REQUIRE_DISTRIBUTED_RATE_LIMIT: "true",
+      })
+    ).toThrow(/Multi-instance production/i);
+
+    expect(() =>
+      loadServerConfig({
+        DEPLOYMENT_TOPOLOGY: "cluster",
+      })
+    ).toThrow(/Invalid DEPLOYMENT_TOPOLOGY/i);
   });
 
   it("enforces exact CORS origin allowlist and rejects arbitrary *.run.app origins", async () => {
@@ -533,7 +588,9 @@ describe("Express API Integration & Security Tests", () => {
       geminiClient: {
         models: {
           generateContent: async () => {
-            throw new Error("404 NOT_FOUND: invalid model name AIzaFakeKey1234567890");
+            throw new Error(
+              "404 NOT_FOUND: invalid model name AIzaFakeKey1234567890"
+            );
           },
         },
       },
@@ -571,7 +628,9 @@ describe("Express API Integration & Security Tests", () => {
       geminiClient: {
         models: {
           generateContent: async () => {
-            throw new Error("503 UNAVAILABLE: AIzaFakeKey1234567890 overloaded");
+            throw new Error(
+              "503 UNAVAILABLE: AIzaFakeKey1234567890 overloaded"
+            );
           },
         },
       },
@@ -610,7 +669,9 @@ describe("Express API Integration & Security Tests", () => {
       geminiClient: {
         models: {
           generateContent: async (params) => {
-            capturedGeminiSystem = String(params.config?.systemInstruction ?? "");
+            capturedGeminiSystem = String(
+              params.config?.systemInstruction ?? ""
+            );
             capturedGeminiContents = JSON.stringify(params.contents ?? "");
             return {
               text: "Based on Open-Meteo modelled PM2.5 of 42.5 ug/m3, limit vigorous jogging near heavy traffic.",
@@ -935,7 +996,11 @@ describe("Express API Integration & Security Tests", () => {
       restToken: "tok",
       fetchImpl: async () =>
         new Response(
-          JSON.stringify([{ result: 1 }, { error: "ERR syntax" }, { result: 1000 }]),
+          JSON.stringify([
+            { result: 1 },
+            { error: "ERR syntax" },
+            { result: 1000 },
+          ]),
           { status: 200 }
         ),
     });
@@ -955,6 +1020,30 @@ describe("Express API Integration & Security Tests", () => {
     await expect(badTtlStore.increment("k")).rejects.toBeInstanceOf(
       DistributedRateLimitUnavailableError
     );
+
+    // 3. Valid Redis pipeline responses handle increment, decrement, and resetKey cleanly
+    const validRedisStore = new RedisRestRateLimitStore({
+      restUrl: "https://redis.example.com",
+      restToken: "tok",
+      fetchImpl: async (_url, init) => {
+        const body = String(init?.body ?? "");
+        if (body.includes("INCR")) {
+          return new Response(
+            JSON.stringify([{ result: 2 }, { result: 1 }, { result: 45_000 }]),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify([{ result: 1 }]), { status: 200 });
+      },
+    });
+    validRedisStore.init({ windowMs: 60_000 } as never);
+    const hit = await validRedisStore.increment("client-1");
+    expect(hit.totalHits).toBe(2);
+    expect(hit.resetTime).toBeInstanceOf(Date);
+    await expect(
+      validRedisStore.decrement("client-1")
+    ).resolves.toBeUndefined();
+    await expect(validRedisStore.resetKey("client-1")).resolves.toBeUndefined();
   });
 
   it("returns HTTP 400 on malformed JSON body and redacts api-key query secrets from upstream provider errors", async () => {
@@ -983,7 +1072,9 @@ describe("Express API Integration & Security Tests", () => {
       "/api/air-quality?city=Chennai&latitude=13.08&longitude=80.27"
     );
     expect(airRes.status).toBe(503);
-    expect(JSON.stringify(airRes.body)).not.toContain("TOP_SECRET_DATA_GOV_KEY");
+    expect(JSON.stringify(airRes.body)).not.toContain(
+      "TOP_SECRET_DATA_GOV_KEY"
+    );
     expect(airRes.body.measured.message).toContain("api-key=[REDACTED]");
   });
 
@@ -1028,4 +1119,3 @@ describe("Express API Integration & Security Tests", () => {
     expect(capturedContents).toContain("[user-text]:");
   });
 });
-

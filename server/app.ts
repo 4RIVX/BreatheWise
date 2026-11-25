@@ -33,8 +33,10 @@ export interface AppDependencies {
   rateLimitStore?: Store;
 }
 
-interface RequestWithCaller extends Request {
-  verifiedUid?: string | null;
+declare module "express-serve-static-core" {
+  interface Request {
+    verifiedUid?: string | null;
+  }
 }
 
 interface ExpressHttpError extends Error {
@@ -139,7 +141,7 @@ export function createApp(deps: AppDependencies = {}) {
   });
 
   const resolveAiCallerMiddleware = async (
-    req: RequestWithCaller,
+    req: Request,
     res: Response,
     next: NextFunction
   ) => {
@@ -163,8 +165,7 @@ export function createApp(deps: AppDependencies = {}) {
       if (deps.rateLimitMax !== undefined) {
         return deps.rateLimitMax;
       }
-      const caller = req as RequestWithCaller;
-      return caller.verifiedUid
+      return req.verifiedUid
         ? config.aiAuthenticatedRateLimitMax
         : config.aiAnonymousRateLimitMax;
     },
@@ -175,9 +176,8 @@ export function createApp(deps: AppDependencies = {}) {
     skip: () => !limiterEnabled,
     validate: { keyGeneratorIpFallback: false },
     keyGenerator: (req, _res) => {
-      const caller = req as RequestWithCaller;
-      if (caller.verifiedUid) {
-        return `ai:user:${hashIdentifier(caller.verifiedUid)}`;
+      if (req.verifiedUid) {
+        return `ai:user:${hashIdentifier(req.verifiedUid)}`;
       }
       return `ai:anon:${hashIdentifier(req.ip || req.socket.remoteAddress || "unknown")}`;
     },

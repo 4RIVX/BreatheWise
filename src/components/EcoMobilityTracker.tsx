@@ -24,6 +24,10 @@ interface EcoMobilityTrackerProps {
 
 const MODE_LIST = Object.values(EMISSION_FACTORS_INDIA);
 
+function isTransportModeId(value: string): value is TransportModeId {
+  return Object.prototype.hasOwnProperty.call(EMISSION_FACTORS_INDIA, value);
+}
+
 interface EmissionFactorCardProps {
   titlePrefix: string;
   factor: EmissionFactorRecord;
@@ -220,7 +224,11 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
           <select
             id="original-mode-select"
             value={originalMode}
-            onChange={(e) => setOriginalMode(e.target.value as TransportModeId)}
+            onChange={(e) => {
+              if (isTransportModeId(e.target.value)) {
+                setOriginalMode(e.target.value);
+              }
+            }}
             className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           >
             {MODE_LIST.map((m) => (
@@ -241,9 +249,11 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
           <select
             id="alternative-mode-select"
             value={alternativeMode}
-            onChange={(e) =>
-              setAlternativeMode(e.target.value as TransportModeId)
-            }
+            onChange={(e) => {
+              if (isTransportModeId(e.target.value)) {
+                setAlternativeMode(e.target.value);
+              }
+            }}
             className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           >
             {MODE_LIST.map((m) => (

@@ -5,7 +5,12 @@ import firebaseRulesPlugin from "@firebase/eslint-plugin-security-rules";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", ".playwright-cli/**", "coverage/**"],
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      ".playwright-cli/**",
+      "coverage/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -19,7 +24,12 @@ export default [
     },
   },
   {
-    files: ["server.ts", "server/**/*.ts", "src/**/*.{ts,tsx}", "tests/**/*.ts"],
+    files: [
+      "server.ts",
+      "server/**/*.ts",
+      "src/**/*.{ts,tsx}",
+      "tests/**/*.{ts,tsx}",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [

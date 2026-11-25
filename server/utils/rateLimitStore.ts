@@ -6,10 +6,13 @@ interface BucketRecord {
   resetAtMs: number;
 }
 
+function isPlainRecord(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
 /**
  * In-process TTL-bounded Store compatible with express-rate-limit.
- * Can also be shared across multiple app instances inside integration tests
- * or single-instance local deployments.
+ * Intended for local development, integration tests, or explicit single-instance deployments.
  */
 export class MemoryRateLimitStore implements Store {
   public readonly hits: Map<string, BucketRecord>;
@@ -121,7 +124,10 @@ export class RedisRestRateLimitStore implements Store {
     this.windowMs = options.windowMs;
   }
 
-  private async executeJsonRequest<T>(path: string, body?: string): Promise<T> {
+  private async executeJsonRequest(
+    path: string,
+    body?: string
+  ): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     let res: Response;
@@ -151,7 +157,7 @@ export class RedisRestRateLimitStore implements Store {
     }
 
     try {
-      return (await res.json()) as T;
+      return await res.json();
     } catch {
       throw new DistributedRateLimitUnavailableError(
         "Distributed Redis rate-limit store returned malformed JSON."
@@ -161,9 +167,7 @@ export class RedisRestRateLimitStore implements Store {
 
   async increment(key: string): Promise<ClientRateLimitInfo> {
     const scopedKey = `${this.prefix}${key}`;
-    const payload = await this.executeJsonRequest<
-      Array<{ result?: unknown; error?: unknown }>
-    >(
+    const payload = await this.executeJsonRequest(
       "/pipeline",
       JSON.stringify([
         ["INCR", scopedKey],
@@ -179,21 +183,23 @@ export class RedisRestRateLimitStore implements Store {
     }
 
     for (const entry of payload) {
-      if (entry && typeof entry === "object" && entry.error) {
+      if (!isPlainRecord(entry) || entry.error) {
         throw new DistributedRateLimitUnavailableError(
           "Distributed Redis rate-limit command failed."
         );
       }
     }
 
-    const totalHits = Number(payload[0]?.result);
+    const first = payload[0];
+    const third = payload[2];
+    const totalHits = Number(isPlainRecord(first) ? first.result : undefined);
     if (!Number.isInteger(totalHits) || totalHits < 1) {
       throw new DistributedRateLimitUnavailableError(
         "Distributed Redis rate-limit store returned malformed counter."
       );
     }
 
-    const rawPttl = payload[2]?.result;
+    const rawPttl = isPlainRecord(third) ? third.result : undefined;
     const pttl = typeof rawPttl === "number" ? rawPttl : Number(rawPttl);
     if (!Number.isFinite(pttl)) {
       throw new DistributedRateLimitUnavailableError(
@@ -210,11 +216,10 @@ export class RedisRestRateLimitStore implements Store {
 
   async decrement(key: string): Promise<void> {
     const scopedKey = `${this.prefix}${key}`;
-    const payload = await this.executeJsonRequest<{
-      result?: unknown;
-      error?: unknown;
-    }>(`/decr/${encodeURIComponent(scopedKey)}`);
-    if (payload && typeof payload === "object" && payload.error) {
+    const payload = await this.executeJsonRequest(
+      `/decr/${encodeURIComponent(scopedKey)}`
+    );
+    if (isPlainRecord(payload) && payload.error) {
       throw new DistributedRateLimitUnavailableError(
         "Distributed Redis rate-limit decrement command failed."
       );
@@ -223,11 +228,10 @@ export class RedisRestRateLimitStore implements Store {
 
   async resetKey(key: string): Promise<void> {
     const scopedKey = `${this.prefix}${key}`;
-    const payload = await this.executeJsonRequest<{
-      result?: unknown;
-      error?: unknown;
-    }>(`/del/${encodeURIComponent(scopedKey)}`);
-    if (payload && typeof payload === "object" && payload.error) {
+    const payload = await this.executeJsonRequest(
+      `/del/${encodeURIComponent(scopedKey)}`
+    );
+    if (isPlainRecord(payload) && payload.error) {
       throw new DistributedRateLimitUnavailableError(
         "Distributed Redis rate-limit reset command failed."
       );
@@ -240,14 +244,22 @@ export function createRateLimitStore(
   fetchImpl: typeof fetch = fetch,
   prefix?: string
 ): Store {
-  if (config.nodeEnv === "production") {
-    if (!config.rateLimitRedisRestUrl || !config.rateLimitRedisRestToken) {
-      console.warn(
-        "WARNING: Distributed Redis rate-limit store is not configured in production. Falling back to in-memory rate limiter."
-      );
-    }
+  const hasRedis = Boolean(
+    config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken
+  );
+
+  if (
+    config.nodeEnv === "production" &&
+    !hasRedis &&
+    (config.deploymentTopology === "multi-instance" ||
+      config.requireDistributedRateLimit)
+  ) {
+    throw new DistributedRateLimitUnavailableError(
+      "Distributed Redis rate-limit credentials are required for multi-instance production deployments."
+    );
   }
-  if (config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken) {
+
+  if (hasRedis) {
     return new RedisRestRateLimitStore({
       restUrl: config.rateLimitRedisRestUrl,
       restToken: config.rateLimitRedisRestToken,

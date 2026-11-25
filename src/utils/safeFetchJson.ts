@@ -7,7 +7,7 @@ export async function readJsonResponse<T extends Record<string, unknown>>(
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Unexpected response format from server.");
     }
     return parsed as T;

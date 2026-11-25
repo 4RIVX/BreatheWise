@@ -1,7 +1,11 @@
 import React, { useMemo } from "react";
 import { buildDailyProtectionPlan } from "../domain/protectionPlanner";
 import type { IndianAqiCategory } from "../domain/indianAqi";
-import type { HouseholdContext } from "../domain/schemas";
+import {
+  CommutePreferenceSchema,
+  OutdoorScheduleSchema,
+  type HouseholdContext,
+} from "../domain/schemas";
 import type { TranslationBundle } from "../domain/i18n";
 
 interface DailyProtectionPlannerProps {
@@ -172,13 +176,17 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
             <select
               id="commute-pref-select"
               value={household.commutePreference}
-              onChange={(e) =>
-                onChangeHousehold({
-                  ...household,
-                  commutePreference: e.target
-                    .value as HouseholdContext["commutePreference"],
-                })
-              }
+              onChange={(e) => {
+                const parsed = CommutePreferenceSchema.safeParse(
+                  e.target.value
+                );
+                if (parsed.success) {
+                  onChangeHousehold({
+                    ...household,
+                    commutePreference: parsed.data,
+                  });
+                }
+              }}
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             >
               <option value="metro_rail">Metro / Rail Transit</option>
@@ -201,13 +209,15 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
             <select
               id="outdoor-schedule-select"
               value={household.outdoorSchedule}
-              onChange={(e) =>
-                onChangeHousehold({
-                  ...household,
-                  outdoorSchedule: e.target
-                    .value as HouseholdContext["outdoorSchedule"],
-                })
-              }
+              onChange={(e) => {
+                const parsed = OutdoorScheduleSchema.safeParse(e.target.value);
+                if (parsed.success) {
+                  onChangeHousehold({
+                    ...household,
+                    outdoorSchedule: parsed.data,
+                  });
+                }
+              }}
               className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             >
               <option value="early_morning">Early Morning (06:00–09:00)</option>

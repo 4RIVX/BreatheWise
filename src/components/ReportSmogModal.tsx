@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { X } from "lucide-react";
 import { INDIAN_STATES } from "../domain/indianCities";
-import type { SmogSourceCategory } from "../domain/schemas";
+import { SmogCategorySchema, type SmogSourceCategory } from "../domain/schemas";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { readJsonResponse } from "../utils/safeFetchJson";
 
@@ -12,6 +12,7 @@ interface ReportSmogModalProps {
   isSignedIn: boolean;
   onSignIn: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
+  backgroundRef?: React.RefObject<HTMLElement | null>;
   onClose: () => void;
   onSubmit: (payload: {
     city: string;
@@ -75,6 +76,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
   isSignedIn,
   onSignIn,
   getIdToken,
+  backgroundRef,
   onClose,
   onSubmit,
 }) => {
@@ -102,6 +104,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
     open,
     dialogRef,
     initialFocusRef: closeButtonRef,
+    backgroundRef,
     onClose,
   });
 
@@ -332,9 +335,10 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 <select
                   id="report-source-cat"
                   value={sourceCategory}
-                  onChange={(e) =>
-                    setSourceCategory(e.target.value as SmogSourceCategory)
-                  }
+                  onChange={(e) => {
+                    const parsed = SmogCategorySchema.safeParse(e.target.value);
+                    if (parsed.success) setSourceCategory(parsed.data);
+                  }}
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
                 >
                   {CATEGORIES.map((cat) => (
