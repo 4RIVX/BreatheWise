@@ -11,6 +11,7 @@ import {
   type TimedHourlySample,
 } from "../../src/domain/indianAqi.ts";
 import { TtlCache } from "../utils/cache.ts";
+import { haversineKm, sanitizeProviderErrorMessage } from "../utils/geo.ts";
 import {
   parseCpcbUnit,
   type CpcbPollutantReading,
@@ -138,23 +139,6 @@ function mapOpenAqParameter(name: string): PollutantCode | null {
   return null;
 }
 
-function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 export async function fetchOpenAqHourlyStations(params: {
   city: string;
   state?: string;
@@ -205,14 +189,18 @@ export async function fetchOpenAqHourlyStations(params: {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 9000);
-    const locRes = await fetchImpl(locUrl.toString(), {
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "X-API-Key": apiKey,
-      },
-    });
-    clearTimeout(timer);
+    let locRes: Response;
+    try {
+      locRes = await fetchImpl(locUrl.toString(), {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "X-API-Key": apiKey,
+        },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!locRes.ok) {
       return {
@@ -309,7 +297,6 @@ export async function fetchOpenAqHourlyStations(params: {
                 "X-API-Key": apiKey,
               },
             });
-            clearTimeout(hTimer);
             if (!hRes.ok) return null;
             const parsed = OpenAqHoursResponseSchema.safeParse(
               await hRes.json()
@@ -361,8 +348,9 @@ export async function fetchOpenAqHourlyStations(params: {
               latestMs,
             };
           } catch {
-            clearTimeout(hTimer);
             return null;
+          } finally {
+            clearTimeout(hTimer);
           }
         })
       );
@@ -507,7 +495,7 @@ export async function fetchOpenAqHourlyStations(params: {
     openAqCache.set(cacheKey, okResult);
     return okResult;
   } catch (err) {
-    const detail = err instanceof Error ? err.message : "Network error";
+    const detail = sanitizeProviderErrorMessage(err);
     return {
       status: "unavailable",
       reason: "UPSTREAM_ERROR",

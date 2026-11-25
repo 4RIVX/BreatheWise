@@ -5,7 +5,12 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FirebaseProvider } from "./firebase/FirebaseProvider";
 import "./index.css";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Root container #root not found in document.");
+}
+
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <ErrorBoundary>
       <FirebaseProvider>

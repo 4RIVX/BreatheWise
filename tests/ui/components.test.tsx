@@ -15,6 +15,21 @@ import { LowEmissionRoutines } from "../../src/components/LowEmissionRoutines";
 import { CommunitySmogWatch } from "../../src/components/CommunitySmogWatch";
 import { AiFamilyGuardian } from "../../src/components/AiFamilyGuardian";
 
+import { Header } from "../../src/components/Header";
+import { WorkspaceToolbar } from "../../src/components/WorkspaceToolbar";
+import { DailyProtectionPlanner } from "../../src/components/DailyProtectionPlanner";
+import { ReportSmogModal } from "../../src/components/ReportSmogModal";
+
+vi.mock("../../src/firebase/FirebaseProvider", () => ({
+  useFirebase: () => ({
+    user: null,
+    firebaseEnabled: false,
+    authError: null,
+    signInWithGoogle: vi.fn(),
+    signOutUser: vi.fn(),
+  }),
+}));
+
 afterEach(() => {
   cleanup();
 });
@@ -477,4 +492,192 @@ describe("BreatheWise UI Components & Accessibility", () => {
       )
     ).toEqual([]);
   });
+
+  it("renders Header, WorkspaceToolbar, and DailyProtectionPlanner with semantic ARIA states and passes axe checks", async () => {
+    const onNavigate = vi.fn();
+    const onChangeLanguage = vi.fn();
+    const onChangeHousehold = vi.fn();
+
+    const { container } = render(
+      <>
+        <Header
+          activeSection="guardian"
+          onNavigate={onNavigate}
+          onOpenReportModal={vi.fn()}
+          t={TRANSLATIONS.en}
+        />
+        <WorkspaceToolbar
+          language="en"
+          onChangeLanguage={onChangeLanguage}
+          locationLabel="Chennai, Tamil Nadu"
+          onRequestBrowserLocation={vi.fn()}
+          locationRequestPending={false}
+          onRefreshAirQuality={vi.fn()}
+          airLoading={false}
+          t={TRANSLATIONS.en}
+        />
+        <DailyProtectionPlanner
+          household={{
+            profileId: "children",
+            householdSize: 4,
+            commutePreference: "metro_rail",
+            outdoorSchedule: "midday",
+            hasHepaPurifier: true,
+            purifierCadrM3h: 300,
+            language: "en",
+          }}
+          onChangeHousehold={onChangeHousehold}
+          aqi={110}
+          category="Moderate"
+          pm25={52}
+          windKmh={12}
+          bestWindowLabel="13:00-15:00 IST"
+          savingProfile={false}
+          isSignedIn={false}
+          t={TRANSLATIONS.en}
+        />
+      </>
+    );
+
+    const guardianNavButtons = screen.getAllByRole("button", {
+      name: TRANSLATIONS.en.nav.guardian,
+    });
+    expect(guardianNavButtons[0]).toHaveAttribute("aria-current", "location");
+
+    const enBtn = screen.getByRole("button", { name: "English" });
+    const taBtn = screen.getByRole("button", { name: "தமிழ்" });
+    expect(enBtn).toHaveAttribute("aria-pressed", "true");
+    expect(taBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(taBtn);
+    expect(onChangeLanguage).toHaveBeenCalledWith("ta");
+
+    const seniorsBtn = screen.getByRole("button", { name: "Older adults" });
+    expect(seniorsBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(seniorsBtn);
+    expect(onChangeHousehold).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: "seniors" })
+    );
+
+    const results = await axe.run(container, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(
+      results.violations.filter(
+        (v) => v.impact === "critical" || v.impact === "serious"
+      )
+    ).toEqual([]);
+  });
+
+  it("supports Escape dismissal, initial focus, aria-pressed severity, and client file validation in ReportSmogModal", async () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <ReportSmogModal
+        open={true}
+        defaultCity="Chennai"
+        defaultState="Tamil Nadu"
+        isSignedIn={true}
+        onSignIn={vi.fn()}
+        getIdToken={vi.fn(async () => "fake-token")}
+        onClose={onClose}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+
+    const closeBtn = screen.getByRole("button", { name: /Close modal/i });
+    expect(document.activeElement).toBe(closeBtn);
+
+    const severeBtn = screen.getByRole("button", { name: "Severe" });
+    expect(severeBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(severeBtn);
+    expect(severeBtn).toHaveAttribute("aria-pressed", "true");
+
+    const fileInput = screen.getByLabelText(/Optional Photo/i);
+    const badFile = new File(["<svg></svg>"], "bad.svg", {
+      type: "image/svg+xml",
+    });
+    fireEvent.change(fileInput, { target: { files: [badFile] } });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Only JPEG, PNG, and WebP photos are supported/i
+    );
+
+    const results = await axe.run(container, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(
+      results.violations.filter(
+        (v) => v.impact === "critical" || v.impact === "serious"
+      )
+    ).toEqual([]);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows accessible coordinate validation alerts in AirQualityDashboard and routine title errors in LowEmissionRoutines", () => {
+    const onSelectLocation = vi.fn();
+    const onAddRoutine = vi.fn();
+
+    render(
+      <>
+        <AirQualityDashboard
+          activeLocation={{
+            city: INDIAN_CITY_PRESETS[0].city,
+            state: INDIAN_CITY_PRESETS[0].state,
+            latitude: INDIAN_CITY_PRESETS[0].latitude,
+            longitude: INDIAN_CITY_PRESETS[0].longitude,
+            source: "preset",
+          }}
+          onSelectLocation={onSelectLocation}
+          measured={null}
+          modelled={null}
+          selectedCpcbIndex={0}
+          onSelectCpcbIndex={vi.fn()}
+          loading={false}
+          error={null}
+          t={TRANSLATIONS.en}
+        />
+        <LowEmissionRoutines
+          routines={DEFAULT_CLEAN_AIR_ROUTINES}
+          onToggleRoutine={vi.fn()}
+          onAddRoutine={onAddRoutine}
+          isSignedIn={false}
+          t={TRANSLATIONS.en}
+        />
+      </>
+    );
+
+    const coordToggle = screen.getByRole("button", {
+      name: /Enter Lat\/Lon/i,
+    });
+    expect(coordToggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(coordToggle);
+    expect(coordToggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.change(screen.getByLabelText("Latitude"), {
+      target: { value: "120" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load Coordinates" }));
+    expect(onSelectLocation).not.toHaveBeenCalled();
+
+    const addRoutineToggle = screen.getByRole("button", {
+      name: /Add Custom Routine/i,
+    });
+    expect(addRoutineToggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(addRoutineToggle);
+    expect(addRoutineToggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.change(screen.getByLabelText(/Routine Title/i), {
+      target: { value: "ab" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Save Routine/i }));
+    expect(onAddRoutine).not.toHaveBeenCalled();
+
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.some((a) => /latitude between -90 and 90/i.test(a.textContent ?? ""))).toBe(true);
+    expect(alerts.some((a) => /at least 3 characters/i.test(a.textContent ?? ""))).toBe(true);
+  });
 });
+

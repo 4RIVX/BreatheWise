@@ -10,6 +10,7 @@ import {
   type PollutantConcentrationInput,
 } from "../../src/domain/indianAqi.ts";
 import { TtlCache } from "../utils/cache.ts";
+import { sanitizeProviderErrorMessage } from "../utils/geo.ts";
 
 // Official data.gov.in resource ID for CPCB "Real-time Air Quality Index from various locations"
 export const CPCB_RESOURCE_ID = "3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69";
@@ -520,7 +521,7 @@ export async function fetchCpcbStations(params: {
       "code" in err.cause
         ? String((err.cause as { code?: unknown }).code ?? "")
         : "";
-    const detail = err instanceof Error ? err.message : "Network error";
+    const detail = sanitizeProviderErrorMessage(err);
     return {
       status: "unavailable",
       reason: "UPSTREAM_ERROR",

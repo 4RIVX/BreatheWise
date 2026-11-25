@@ -13,12 +13,20 @@ import {
   updateDoc,
   where,
   writeBatch,
-  type Timestamp,
+  type DocumentData,
+  type DocumentReference,
   type Unsubscribe,
 } from "firebase/firestore";
+import { z } from "zod";
 import { db } from "./config";
 import { handleFirestoreError, OperationType } from "./errorHandling";
-import type { HouseholdContext, SmogSourceCategory } from "../domain/schemas";
+import {
+  HouseholdContextSchema,
+  SmogCategorySchema,
+  SmogSeveritySchema,
+  type HouseholdContext,
+  type SmogSourceCategory,
+} from "../domain/schemas";
 
 export interface UserProfileRecord extends HouseholdContext {
   uid: string;
@@ -72,9 +80,38 @@ export interface FirestoreEcoTripLog {
   createdAtIso: string;
 }
 
+const RoutineCategorySchema = z.enum([
+  "Mobility",
+  "Heating",
+  "Ventilation",
+  "Community",
+  "Energy",
+  "Waste",
+]);
+
+const ModerationStatusSchema = z.enum(["UNVERIFIED", "REVIEWED", "FLAGGED"]);
+
+function asNonEmptyString(val: unknown, fallback = ""): string {
+  return typeof val === "string" ? val : fallback;
+}
+
+function asFiniteNumber(val: unknown, fallback = 0): number {
+  const num = Number(val);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function toError(err: unknown, fallbackMessage: string): Error {
+  return err instanceof Error ? err : new Error(fallbackMessage);
+}
+
 function timestampToIso(val: unknown): string {
-  if (val && typeof val === "object" && "toDate" in val) {
-    return (val as Timestamp).toDate().toISOString();
+  if (
+    val &&
+    typeof val === "object" &&
+    "toDate" in val &&
+    typeof (val as { toDate?: unknown }).toDate === "function"
+  ) {
+    return (val as { toDate: () => Date }).toDate().toISOString();
   }
   return new Date().toISOString();
 }
@@ -95,19 +132,29 @@ export async function ensureUserProfile(
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const data = snap.data();
-      return {
-        uid: String(data.uid),
-        email: String(data.email),
-        displayName: String(data.displayName),
-        city: String(data.city),
-        state: String(data.state),
+      const parsedHousehold = HouseholdContextSchema.safeParse({
         profileId: data.profileId,
-        householdSize: Number(data.householdSize),
+        householdSize: data.householdSize,
         commutePreference: data.commutePreference,
         outdoorSchedule: data.outdoorSchedule,
-        hasHepaPurifier: Boolean(data.hasHepaPurifier),
-        purifierCadrM3h: Number(data.purifierCadrM3h),
+        hasHepaPurifier: data.hasHepaPurifier,
+        purifierCadrM3h: data.purifierCadrM3h,
         language: data.language,
+      });
+      const safeHousehold = parsedHousehold.success
+        ? parsedHousehold.data
+        : defaults.household;
+
+      return {
+        uid: asNonEmptyString(data.uid, user.uid),
+        email: asNonEmptyString(data.email, user.email ?? ""),
+        displayName: asNonEmptyString(
+          data.displayName,
+          user.displayName || "BreatheWise Member"
+        ),
+        city: asNonEmptyString(data.city, defaults.city),
+        state: asNonEmptyString(data.state, defaults.state),
+        ...safeHousehold,
       };
     }
 
@@ -196,16 +243,17 @@ export function subscribeToUserRoutines(
     (snapshot) => {
       const rows: FirestoreRoutineItem[] = snapshot.docs.map((d) => {
         const data = d.data();
+        const catParsed = RoutineCategorySchema.safeParse(data.category);
         return {
           id: d.id,
-          uid: String(data.uid),
-          title: String(data.title),
-          description: String(data.description),
-          category: data.category,
-          co2SavedKg: Number(data.co2SavedKg),
-          exposureNote: String(data.exposureNote),
+          uid: asNonEmptyString(data.uid, uid),
+          title: asNonEmptyString(data.title, "Clean-air routine"),
+          description: asNonEmptyString(data.description),
+          category: catParsed.success ? catParsed.data : "Community",
+          co2SavedKg: asFiniteNumber(data.co2SavedKg, 0),
+          exposureNote: asNonEmptyString(data.exposureNote),
           completedToday: Boolean(data.completedToday),
-          weeklyCompletions: Number(data.weeklyCompletions),
+          weeklyCompletions: asFiniteNumber(data.weeklyCompletions, 0),
         };
       });
       onData(rows);
@@ -214,7 +262,7 @@ export function subscribeToUserRoutines(
       try {
         handleFirestoreError(error, OperationType.LIST, path);
       } catch (wrapped) {
-        onError(wrapped as Error);
+        onError(toError(wrapped, "Unable to read routines."));
       }
     }
   );
@@ -275,18 +323,28 @@ export function mapPublicSmogReportDoc(
   id: string,
   data: Record<string, unknown>
 ): FirestoreSmogReport {
+  const categoryParsed = SmogCategorySchema.safeParse(data.sourceCategory);
+  const severityParsed = SmogSeveritySchema.safeParse(data.severity);
+  const moderationParsed = ModerationStatusSchema.safeParse(
+    data.moderationStatus
+  );
+
   return {
     id,
-    city: String(data.city),
-    state: String(data.state),
-    approximateLocation: String(data.approximateLocation),
-    sourceCategory: data.sourceCategory as SmogSourceCategory,
-    severity: data.severity as FirestoreSmogReport["severity"],
-    description: String(data.description),
-    observedTimeLabel: String(data.observedTimeLabel),
-    moderationStatus:
-      data.moderationStatus as FirestoreSmogReport["moderationStatus"],
-    confirmationsCount: Number(data.confirmationsCount),
+    city: asNonEmptyString(data.city, "Unknown City"),
+    state: asNonEmptyString(data.state),
+    approximateLocation: asNonEmptyString(
+      data.approximateLocation,
+      "Approximate locality"
+    ),
+    sourceCategory: categoryParsed.success ? categoryParsed.data : "Other",
+    severity: severityParsed.success ? severityParsed.data : "Moderate",
+    description: asNonEmptyString(data.description),
+    observedTimeLabel: asNonEmptyString(data.observedTimeLabel, "Recent"),
+    moderationStatus: moderationParsed.success
+      ? moderationParsed.data
+      : "UNVERIFIED",
+    confirmationsCount: Math.max(0, asFiniteNumber(data.confirmationsCount, 0)),
     photoDataUrl:
       typeof data.photoDataUrl === "string" ? data.photoDataUrl : undefined,
     createdAtIso: timestampToIso(data.createdAt),
@@ -317,7 +375,7 @@ export function subscribeToSmogReports(
       try {
         handleFirestoreError(error, OperationType.LIST, path);
       } catch (wrapped) {
-        onError(wrapped as Error);
+        onError(toError(wrapped, "Unable to read smog reports."));
       }
     }
   );
@@ -382,19 +440,19 @@ export async function createSmogReport(
   }
 }
 
-export interface ConfirmationTransactionAdapter {
-  get: (ref: unknown) => Promise<{
+export interface ConfirmationTransactionAdapter<TRef = unknown> {
+  get: (ref: TRef) => Promise<{
     exists: () => boolean;
     data: () => Record<string, unknown> | undefined;
   }>;
-  set: (ref: unknown, data: Record<string, unknown>) => void;
-  update: (ref: unknown, data: Record<string, unknown>) => void;
+  set: (ref: TRef, data: Record<string, unknown>) => void;
+  update: (ref: TRef, data: Record<string, unknown>) => void;
 }
 
-export async function applyAtomicConfirmationTx(params: {
-  tx: ConfirmationTransactionAdapter;
-  confRef: unknown;
-  reportRef: unknown;
+export async function applyAtomicConfirmationTx<TRef = unknown>(params: {
+  tx: ConfirmationTransactionAdapter<TRef>;
+  confRef: TRef;
+  reportRef: TRef;
   uid: string;
   reportId: string;
   timestampValue: unknown;
@@ -412,7 +470,7 @@ export async function applyAtomicConfirmationTx(params: {
     throw new Error("REPORT_NOT_FOUND");
   }
 
-  const currentCount = Number(reportSnap.data()?.confirmationsCount ?? 0);
+  const currentCount = asFiniteNumber(reportSnap.data()?.confirmationsCount, 0);
   const nextCount = currentCount + 1;
 
   tx.set(confRef, {
@@ -438,16 +496,28 @@ export async function confirmSmogReportAtomic(
   const path = `smogReports/${reportId}/confirmations/${uid}`;
 
   try {
-    return await runTransaction(db, async (tx) =>
-      applyAtomicConfirmationTx({
-        tx: tx as unknown as ConfirmationTransactionAdapter,
+    return await runTransaction(db, async (tx) => {
+      const adapter: ConfirmationTransactionAdapter<
+        DocumentReference<DocumentData>
+      > = {
+        get: (ref) => tx.get(ref),
+        set: (ref, data) => {
+          tx.set(ref, data);
+        },
+        update: (ref, data) => {
+          tx.update(ref, data);
+        },
+      };
+
+      return applyAtomicConfirmationTx({
+        tx: adapter,
         confRef,
         reportRef,
         uid,
         reportId,
         timestampValue: serverTimestamp(),
-      })
-    );
+      });
+    });
   } catch (err) {
     if (
       err instanceof Error &&
@@ -510,13 +580,13 @@ export function subscribeToEcoLogs(
         const data = d.data();
         return {
           id: d.id,
-          uid: String(data.uid),
-          distanceKm: Number(data.distanceKm),
-          originalMode: String(data.originalMode),
-          alternativeMode: String(data.alternativeMode),
-          journeys: Number(data.journeys),
-          co2AvoidedKg: Number(data.co2AvoidedKg),
-          factorVersion: String(data.factorVersion),
+          uid: asNonEmptyString(data.uid, uid),
+          distanceKm: asFiniteNumber(data.distanceKm, 0),
+          originalMode: asNonEmptyString(data.originalMode, "unknown"),
+          alternativeMode: asNonEmptyString(data.alternativeMode, "unknown"),
+          journeys: asFiniteNumber(data.journeys, 1),
+          co2AvoidedKg: asFiniteNumber(data.co2AvoidedKg, 0),
+          factorVersion: asNonEmptyString(data.factorVersion, "unknown"),
           createdAtIso: timestampToIso(data.createdAt),
         };
       });
@@ -526,7 +596,7 @@ export function subscribeToEcoLogs(
       try {
         handleFirestoreError(error, OperationType.LIST, path);
       } catch (wrapped) {
-        onError(wrapped as Error);
+        onError(toError(wrapped, "Unable to read eco commute logs."));
       }
     }
   );

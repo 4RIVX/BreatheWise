@@ -90,7 +90,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
           <h2 className="text-xl font-semibold text-slate-900">
             {t.sections.indoorTitle}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Transparent room-volume, CADR, and Air Changes per Hour (ACH)
             calculator for {locationLabel}.
           </p>
@@ -103,22 +103,24 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
         >
           <button
             type="button"
+            aria-pressed={cadrUnit === "m3h"}
             onClick={() => handleUnitToggle("m3h")}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
               cadrUnit === "m3h"
                 ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
+                : "text-slate-700 hover:text-slate-900"
             }`}
           >
             CADR in m³/h
           </button>
           <button
             type="button"
+            aria-pressed={cadrUnit === "cfm"}
             onClick={() => handleUnitToggle("cfm")}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
               cadrUnit === "cfm"
                 ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
+                : "text-slate-700 hover:text-slate-900"
             }`}
           >
             CADR in CFM
@@ -146,7 +148,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 onChange={(e) =>
                   setLengthM(Math.max(1, Number(e.target.value) || 1))
                 }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
               />
             </div>
 
@@ -167,7 +169,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 onChange={(e) =>
                   setWidthM(Math.max(1, Number(e.target.value) || 1))
                 }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
               />
             </div>
 
@@ -188,7 +190,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 onChange={(e) =>
                   setHeightM(Math.max(1.8, Number(e.target.value) || 2.5))
                 }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
               />
             </div>
           </div>
@@ -211,7 +213,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 onChange={(e) =>
                   handleCadrInputChange(Number(e.target.value) || 0)
                 }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
               />
             </div>
 
@@ -226,7 +228,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 id="desired-ach-select"
                 value={desiredAch}
                 onChange={(e) => setDesiredAch(Number(e.target.value))}
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
               >
                 <option value={3}>3 ACH (Light maintenance)</option>
                 <option value={4}>4 ACH (Moderate pollution)</option>
@@ -240,34 +242,34 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
             <div className="pt-4 border-t border-slate-200 space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-xs text-slate-500">Room Volume</p>
+                  <p className="text-xs text-slate-600">Room Volume</p>
                   <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
                     {metrics.roomVolumeM3}{" "}
                     <span className="text-xs font-normal">m³</span>
                   </p>
-                  <p className="text-[11px] font-mono tabular-nums text-slate-500">
+                  <p className="text-[11px] font-mono tabular-nums text-slate-600">
                     {metrics.roomFloorAreaM2} m² floor
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-slate-500">Required CADR</p>
+                  <p className="text-xs text-slate-600">Required CADR</p>
                   <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
                     {metrics.requiredCadrM3h}{" "}
                     <span className="text-xs font-normal">m³/h</span>
                   </p>
-                  <p className="text-[11px] font-mono tabular-nums text-slate-500">
+                  <p className="text-[11px] font-mono tabular-nums text-slate-600">
                     {metrics.requiredCadrCfm} CFM
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-slate-500">Effective ACH</p>
+                  <p className="text-xs text-slate-600">Effective ACH</p>
                   <p
                     className={`text-2xl font-mono font-semibold tabular-nums mt-1 ${
                       metrics.meetsDesiredAch
-                        ? "text-emerald-700"
-                        : "text-amber-700"
+                        ? "text-emerald-800"
+                        : "text-amber-800"
                     }`}
                   >
                     {metrics.effectiveAch}{" "}
@@ -285,7 +287,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 <p>Volume = {metrics.formulas.volume}</p>
                 <p>Required CADR = {metrics.formulas.requiredCadr}</p>
                 <p>Effective ACH = {metrics.formulas.effectiveAch}</p>
-                <p className="text-slate-500">
+                <p className="text-slate-600">
                   {metrics.formulas.unitConversion}
                 </p>
               </div>
@@ -294,7 +296,7 @@ export const IndoorAirCoach: React.FC<IndoorAirCoachProps> = ({
                 <p>
                   <strong>Calculator Scope:</strong> {metrics.disclaimer}
                 </p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-slate-600">
                   <strong>Scientific Scope &amp; Limitations:</strong> CADR
                   (Clean Air Delivery Rate) estimates particulate clearance flow
                   under ideal well-mixed room assumptions; the 3–6 ACH selector

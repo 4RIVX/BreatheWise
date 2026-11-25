@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import {
   calculateEcoImpact,
   EMISSION_FACTORS_INDIA,
+  type EmissionFactorRecord,
   type TransportModeId,
 } from "../domain/ecoImpact";
 import type { TranslationBundle } from "../domain/i18n";
@@ -23,6 +24,53 @@ interface EcoMobilityTrackerProps {
 
 const MODE_LIST = Object.values(EMISSION_FACTORS_INDIA);
 
+interface EmissionFactorCardProps {
+  titlePrefix: string;
+  factor: EmissionFactorRecord;
+}
+
+const EmissionFactorCard: React.FC<EmissionFactorCardProps> = ({
+  titlePrefix,
+  factor,
+}) => (
+  <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="font-semibold text-slate-800">
+        {titlePrefix} · {factor.factorVersion} ({factor.publicationYear})
+      </p>
+      {factor.isIllustrativeEstimate && (
+        <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+          Illustrative Estimate
+        </span>
+      )}
+    </div>
+    <p>Scope: {factor.pollutantScope}</p>
+    <p>
+      Source: {factor.source} ({factor.pageOrTableRef})
+    </p>
+    {factor.verifiedGridFactorNote && (
+      <p className="text-slate-700">{factor.verifiedGridFactorNote}</p>
+    )}
+    {factor.assumptionNote && (
+      <p className="text-amber-900 font-medium">{factor.assumptionNote}</p>
+    )}
+    <p>
+      Reference:{" "}
+      <a
+        href={factor.sourceUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="text-teal-800 underline break-all rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+      >
+        {factor.sourceUrl}
+      </a>
+    </p>
+    <p>Units: {factor.units}</p>
+    <p>Region: {factor.geographicRelevance}</p>
+    <p>Limitations: {factor.limitations}</p>
+  </div>
+);
+
 export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
   isSignedIn,
   savedLogs,
@@ -38,7 +86,10 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
   const [alternativeOccupancy, setAlternativeOccupancy] = useState<number>(1);
   const [journeys, setJourneys] = useState<number>(10);
   const [saving, setSaving] = useState(false);
-  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<{
+    message: string;
+    isError: boolean;
+  } | null>(null);
 
   const origFactor = EMISSION_FACTORS_INDIA[originalMode];
   const altFactor = EMISSION_FACTORS_INDIA[alternativeMode];
@@ -78,11 +129,16 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
         co2AvoidedKg: impact.emissionsAvoidedKg,
         factorVersion: `${impact.originalFactor.factorVersion}/${impact.alternativeFactor.factorVersion}`,
       });
-      setSaveFeedback("Commute comparison saved to your Firestore log.");
+      setSaveFeedback({
+        message: "Commute comparison saved to your Firestore log.",
+        isError: false,
+      });
     } catch (err) {
-      setSaveFeedback(
-        err instanceof Error ? err.message : "Could not save trip log."
-      );
+      setSaveFeedback({
+        message:
+          err instanceof Error ? err.message : "Could not save trip log.",
+        isError: true,
+      });
     } finally {
       setSaving(false);
     }
@@ -98,7 +154,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
           <h2 className="text-xl font-semibold text-slate-900">
             {t.sections.mobilityTitle}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Compare Indian commuting modes using documented, versioned emission
             factors.
           </p>
@@ -113,7 +169,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             saving
           }
           onClick={handleSave}
-          className="px-3.5 py-2 text-xs font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="px-3.5 py-2 text-xs font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
         >
           {saving
             ? "Saving..."
@@ -124,7 +180,12 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
       </div>
 
       {saveFeedback && (
-        <p className="text-xs text-teal-800 font-medium">{saveFeedback}</p>
+        <p
+          role={saveFeedback.isError ? "alert" : "status"}
+          className={`text-xs font-medium ${saveFeedback.isError ? "text-rose-700" : "text-teal-800"}`}
+        >
+          {saveFeedback.message}
+        </p>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -145,7 +206,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             onChange={(e) =>
               setDistanceKm(Math.max(0.5, Number(e.target.value) || 0.5))
             }
-            className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+            className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           />
         </div>
 
@@ -160,7 +221,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             id="original-mode-select"
             value={originalMode}
             onChange={(e) => setOriginalMode(e.target.value as TransportModeId)}
-            className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+            className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           >
             {MODE_LIST.map((m) => (
               <option key={m.modeId} value={m.modeId}>
@@ -183,7 +244,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
             onChange={(e) =>
               setAlternativeMode(e.target.value as TransportModeId)
             }
-            className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+            className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           >
             {MODE_LIST.map((m) => (
               <option key={m.modeId} value={m.modeId}>
@@ -211,7 +272,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                 Math.max(1, Math.min(365, Number(e.target.value) || 1))
               )
             }
-            className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+            className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
           />
         </div>
 
@@ -233,7 +294,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
               onChange={(e) =>
                 setOriginalOccupancy(Math.max(1, Number(e.target.value) || 1))
               }
-              className="w-full px-2.5 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg disabled:opacity-50"
+              className="w-full px-2.5 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             />
           </div>
           <div>
@@ -255,7 +316,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                   Math.max(1, Number(e.target.value) || 1)
                 )
               }
-              className="w-full px-2.5 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg disabled:opacity-50"
+              className="w-full px-2.5 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             />
           </div>
         </div>
@@ -265,159 +326,82 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
         <div className="space-y-5 pt-4 border-t border-slate-200">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
             <div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-600">
                 Estimated {impact.emissionsAvoidedMetricLabel} Avoided
               </p>
               {impact.emissionsAvoidedKg !== null ? (
                 <p
                   className={`text-3xl font-mono font-bold tabular-nums mt-1 ${
                     impact.emissionsAvoidedKg >= 0
-                      ? "text-emerald-700"
-                      : "text-amber-700"
+                      ? "text-emerald-800"
+                      : "text-amber-800"
                   }`}
                 >
                   {impact.emissionsAvoidedKg}{" "}
-                  <span className="text-xs font-normal text-slate-500">kg</span>
+                  <span className="text-xs font-normal text-slate-600">kg</span>
                 </p>
               ) : (
                 <p className="text-sm font-semibold text-amber-800 mt-2">
                   Not subtracted (incompatible scopes)
                 </p>
               )}
-              <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
+              <p className="text-xs text-slate-600 font-mono tabular-nums mt-0.5">
                 {impact.totalDistanceKm} km total
               </p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500">Vehicle Trips Avoided</p>
+              <p className="text-xs text-slate-600">Vehicle Trips Avoided</p>
               <p className="text-3xl font-mono font-bold tabular-nums text-slate-900 mt-1">
                 {impact.vehicleTripsAvoided}
               </p>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 Private motorized trips displaced
               </p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500">Baseline Mode Footprint</p>
+              <p className="text-xs text-slate-600">Baseline Mode Footprint</p>
               <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
                 {impact.originalEmissionsKg}{" "}
-                <span className="text-xs font-normal text-slate-500">
+                <span className="text-xs font-normal text-slate-600">
                   kg{" "}
                   {impact.originalEmissionsMetric === "ZERO"
                     ? "CO2 / CO2e"
                     : impact.originalEmissionsMetric}
                 </span>
               </p>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 {impact.originalFactor.label}
               </p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500">Alternative Footprint</p>
+              <p className="text-xs text-slate-600">Alternative Footprint</p>
               <p className="text-2xl font-mono font-semibold tabular-nums text-slate-900 mt-1">
                 {impact.alternativeEmissionsKg}{" "}
-                <span className="text-xs font-normal text-slate-500">
+                <span className="text-xs font-normal text-slate-600">
                   kg{" "}
                   {impact.alternativeEmissionsMetric === "ZERO"
                     ? "CO2 / CO2e"
                     : impact.alternativeEmissionsMetric}
                 </span>
               </p>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 {impact.alternativeFactor.label}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-600">
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-semibold text-slate-800">
-                  Original Factor · {impact.originalFactor.factorVersion} (
-                  {impact.originalFactor.publicationYear})
-                </p>
-                {impact.originalFactor.isIllustrativeEstimate && (
-                  <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                    Illustrative Estimate
-                  </span>
-                )}
-              </div>
-              <p>Scope: {impact.originalFactor.pollutantScope}</p>
-              <p>
-                Source: {impact.originalFactor.source} (
-                {impact.originalFactor.pageOrTableRef})
-              </p>
-              {impact.originalFactor.verifiedGridFactorNote && (
-                <p className="text-slate-700">
-                  {impact.originalFactor.verifiedGridFactorNote}
-                </p>
-              )}
-              {impact.originalFactor.assumptionNote && (
-                <p className="text-amber-900 font-medium">
-                  {impact.originalFactor.assumptionNote}
-                </p>
-              )}
-              <p>
-                Reference:{" "}
-                <a
-                  href={impact.originalFactor.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-teal-700 underline break-all"
-                >
-                  {impact.originalFactor.sourceUrl}
-                </a>
-              </p>
-              <p>Units: {impact.originalFactor.units}</p>
-              <p>Region: {impact.originalFactor.geographicRelevance}</p>
-              <p>Limitations: {impact.originalFactor.limitations}</p>
-            </div>
-
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-semibold text-slate-800">
-                  Alternative Factor · {impact.alternativeFactor.factorVersion}{" "}
-                  ({impact.alternativeFactor.publicationYear})
-                </p>
-                {impact.alternativeFactor.isIllustrativeEstimate && (
-                  <span className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                    Illustrative Estimate
-                  </span>
-                )}
-              </div>
-              <p>Scope: {impact.alternativeFactor.pollutantScope}</p>
-              <p>
-                Source: {impact.alternativeFactor.source} (
-                {impact.alternativeFactor.pageOrTableRef})
-              </p>
-              {impact.alternativeFactor.verifiedGridFactorNote && (
-                <p className="text-slate-700">
-                  {impact.alternativeFactor.verifiedGridFactorNote}
-                </p>
-              )}
-              {impact.alternativeFactor.assumptionNote && (
-                <p className="text-amber-900 font-medium">
-                  {impact.alternativeFactor.assumptionNote}
-                </p>
-              )}
-              <p>
-                Reference:{" "}
-                <a
-                  href={impact.alternativeFactor.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-teal-700 underline break-all"
-                >
-                  {impact.alternativeFactor.sourceUrl}
-                </a>
-              </p>
-              <p>Units: {impact.alternativeFactor.units}</p>
-              <p>Region: {impact.alternativeFactor.geographicRelevance}</p>
-              <p>Limitations: {impact.alternativeFactor.limitations}</p>
-            </div>
+            <EmissionFactorCard
+              titlePrefix="Original Factor"
+              factor={impact.originalFactor}
+            />
+            <EmissionFactorCard
+              titlePrefix="Alternative Factor"
+              factor={impact.alternativeFactor}
+            />
           </div>
 
           <div className="space-y-1 text-xs text-slate-600">
@@ -447,7 +431,7 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
                   {log.originalMode} → {log.alternativeMode} ({log.distanceKm}{" "}
                   km × {log.journeys})
                 </span>
-                <span className="font-mono tabular-nums text-emerald-700 font-semibold">
+                <span className="font-mono tabular-nums text-emerald-800 font-semibold">
                   {log.co2AvoidedKg} kg GHG · {log.factorVersion}
                 </span>
               </div>

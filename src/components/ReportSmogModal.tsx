@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { X } from "lucide-react";
 import { INDIAN_STATES } from "../domain/indianCities";
 import type { SmogSourceCategory } from "../domain/schemas";
+import { useDialogA11y } from "../hooks/useDialogA11y";
+import { readJsonResponse } from "../utils/safeFetchJson";
 
 interface ReportSmogModalProps {
   open: boolean;
@@ -31,6 +33,13 @@ const CATEGORIES: SmogSourceCategory[] = [
   "Biomass burning",
   "Other",
 ];
+
+const ALLOWED_CLIENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const MAX_RAW_CLIENT_FILE_BYTES = 10 * 1024 * 1024;
 
 async function compressFileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -86,11 +95,31 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useDialogA11y({
+    open,
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+    onClose,
+  });
+
   if (!open) return null;
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.type && !ALLOWED_CLIENT_MIME_TYPES.has(file.type)) {
+      setError("Only JPEG, PNG, and WebP photos are supported.");
+      return;
+    }
+    if (file.size <= 0 || file.size > MAX_RAW_CLIENT_FILE_BYTES) {
+      setError("Please select an image file under 10 MB.");
+      return;
+    }
+
     setError(null);
     setPhotoStatus("Sanitizing image & stripping EXIF/GPS metadata...");
     try {
@@ -107,10 +136,10 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
         },
         body: JSON.stringify({ imageDataUrl: compactDataUrl }),
       });
-      const data = (await res.json()) as {
+      const data = await readJsonResponse<{
         photoDataUrl?: string;
         error?: string;
-      };
+      }>(res);
       if (!res.ok || !data.photoDataUrl) {
         throw new Error(data.error || "Photo failed server validation.");
       }
@@ -174,8 +203,17 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="report-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 shadow-lg max-h-[90vh] overflow-y-auto focus:outline-none"
+      >
         <div className="flex items-center justify-between pb-4 border-b border-slate-200">
           <div>
             <h2
@@ -184,18 +222,19 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
             >
               Submit Community Smog Observation
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-600 mt-0.5">
               Reports are published anonymously as UNVERIFIED citizen
               observations.
             </p>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
+            className="p-1.5 text-slate-600 hover:text-slate-900 rounded-lg cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
           >
-            <X className="w-5 h-5" />
+            <X aria-hidden="true" className="w-5 h-5" />
           </button>
         </div>
 
@@ -208,7 +247,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
             <button
               type="button"
               onClick={onSignIn}
-              className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+              className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
             >
               Sign in with Google
             </button>
@@ -238,7 +277,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                   required
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
                 />
               </div>
 
@@ -253,7 +292,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                   id="report-state"
                   value={stateName}
                   onChange={(e) => setStateName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
                 >
                   {INDIAN_STATES.map((st) => (
                     <option key={st} value={st}>
@@ -278,7 +317,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 value={approximateLocation}
                 onChange={(e) => setApproximateLocation(e.target.value)}
                 placeholder="e.g., Near Velachery MRTS Flyover"
-                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
               />
             </div>
 
@@ -296,7 +335,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                   onChange={(e) =>
                     setSourceCategory(e.target.value as SmogSourceCategory)
                   }
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
                 >
                   {CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
@@ -306,27 +345,32 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 </select>
               </div>
 
-              <div>
-                <span className="block text-xs font-medium text-slate-700 mb-1">
+              <fieldset>
+                <legend className="block text-xs font-medium text-slate-700 mb-1">
                   Severity
-                </span>
-                <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg">
+                </legend>
+                <div
+                  role="group"
+                  aria-label="Smog severity"
+                  className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg"
+                >
                   {(["Mild", "Moderate", "Severe"] as const).map((sev) => (
                     <button
                       key={sev}
                       type="button"
+                      aria-pressed={severity === sev}
                       onClick={() => setSeverity(sev)}
-                      className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                      className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
                         severity === sev
                           ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-600"
+                          : "text-slate-700 hover:text-slate-900"
                       }`}
                     >
                       {sev}
                     </button>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             </div>
 
             <div>
@@ -343,7 +387,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe visible smoke, odour, or dust conditions..."
-                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700 resize-none"
+                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700 resize-none"
               />
             </div>
 
@@ -361,7 +405,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                   value={observedTimeLabel}
                   onChange={(e) => setObservedTimeLabel(e.target.value)}
                   placeholder="e.g., Today 07:30 IST"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
                 />
               </div>
 
@@ -377,27 +421,29 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={handlePhotoSelect}
-                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
                 />
               </div>
             </div>
 
             {photoStatus && (
-              <p className="text-xs text-teal-800">{photoStatus}</p>
+              <p role="status" className="text-xs text-teal-800">
+                {photoStatus}
+              </p>
             )}
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
               >
                 {submitting ? "Submitting..." : "Submit Report"}
               </button>

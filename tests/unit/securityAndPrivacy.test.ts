@@ -1449,4 +1449,24 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     expect(bunLock).toContain('"sharp@0.35.');
     expect(bunLock).toContain('"typescript@5.9.3"');
   });
+
+  it("falls back safely when Firestore public smog report fields are corrupted or non-string", () => {
+    const mapped = mapPublicSmogReportDoc("corrupt-doc-1", {
+      authorUid: "should-never-surface",
+      city: 42,
+      sourceCategory: "NotARealCategory",
+      severity: "ExtremeInvalid",
+      moderationStatus: "ADMIN_BYPASS",
+      confirmationsCount: "not-a-number",
+    });
+
+    expect(mapped.id).toBe("corrupt-doc-1");
+    expect(mapped.city).toBe("Unknown City");
+    expect(mapped.sourceCategory).toBe("Other");
+    expect(mapped.severity).toBe("Moderate");
+    expect(mapped.moderationStatus).toBe("UNVERIFIED");
+    expect(mapped.confirmationsCount).toBe(0);
+    expect("authorUid" in mapped).toBe(false);
+  });
 });
+

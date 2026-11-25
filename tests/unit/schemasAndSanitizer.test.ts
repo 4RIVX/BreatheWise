@@ -286,4 +286,11 @@ describe("Zod Schemas, Prompt Injection Sanitizer, and Binary Image Re-encoder",
     expect(cleaned).toContain("[untrusted-url-removed]");
     expect(cleaned).toContain("[user-text]:");
   });
+
+  it("rejects malformed base64 lengths (length % 4 === 1) before image decoding", async () => {
+    await expect(
+      verifyAndSanitizeImage("data:image/png;base64,ABCDE")
+    ).rejects.toThrow(/Invalid base64 image encoding/i);
+  });
 });
+

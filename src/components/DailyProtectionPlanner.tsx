@@ -84,13 +84,13 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
           <h2 className="text-xl font-semibold text-slate-900">
             {t.sections.plannerTitle}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-600 mt-1">
             Personalize household sensitivity, schedule, and filtration setup
             without collecting medical records.
           </p>
         </div>
 
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-600">
           {savingProfile
             ? "Saving preferences..."
             : isSignedIn
@@ -109,24 +109,28 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
             aria-label="Select household profile"
             className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-lg w-fit"
           >
-            {PROFILE_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() =>
-                  onChangeHousehold({ ...household, profileId: opt.id })
-                }
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  household.profileId === opt.id
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+            {PROFILE_OPTIONS.map((opt) => {
+              const isSelected = household.profileId === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    onChangeHousehold({ ...household, profileId: opt.id })
+                  }
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+                    isSelected
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-700 hover:text-slate-900"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
-          <p className="text-xs text-slate-500 mt-1.5">
+          <p className="text-xs text-slate-600 mt-1.5">
             {PROFILE_OPTIONS.find((p) => p.id === household.profileId)?.desc}
           </p>
         </div>
@@ -154,7 +158,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
                   ),
                 })
               }
-              className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+              className="w-full px-3 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             />
           </div>
 
@@ -175,7 +179,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
                     .value as HouseholdContext["commutePreference"],
                 })
               }
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             >
               <option value="metro_rail">Metro / Rail Transit</option>
               <option value="bus">City Bus</option>
@@ -204,7 +208,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
                     .value as HouseholdContext["outdoorSchedule"],
                 })
               }
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             >
               <option value="early_morning">Early Morning (06:00–09:00)</option>
               <option value="midday">Midday (11:00–16:00)</option>
@@ -229,7 +233,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
                   hasHepaPurifier: e.target.value === "yes",
                 })
               }
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-700"
+              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
             >
               <option value="yes">HEPA Purifier Available</option>
               <option value="no">No Air Purifier</option>
@@ -241,7 +245,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
       <div className="pt-4 border-t border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4 space-y-4">
           <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-slate-600">
               Current Household Risk Tier
             </p>
             <p className="text-2xl font-semibold text-slate-900">
@@ -253,7 +257,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
           </div>
 
           <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-slate-600">
               Ventilation Guidance
             </p>
             <p className="text-xs text-slate-700 leading-relaxed">
@@ -272,7 +276,7 @@ export const DailyProtectionPlanner: React.FC<DailyProtectionPlannerProps> = ({
                   </span>
                   {step.title}
                 </p>
-                <span className="text-xs font-mono tabular-nums text-slate-500">
+                <span className="text-xs font-mono tabular-nums text-slate-600">
                   {step.timeWindow} · {step.priority}
                 </span>
               </div>

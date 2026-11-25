@@ -147,7 +147,11 @@ export async function verifyAndSanitizeImage(
     : trimmed;
 
   const cleanBase64 = rawPayload.replace(/\s+/g, "");
-  if (!cleanBase64 || !/^[A-Za-z0-9+/=]+$/.test(cleanBase64)) {
+  if (
+    !cleanBase64 ||
+    cleanBase64.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/=]+$/.test(cleanBase64)
+  ) {
     throw new Error("Invalid base64 image encoding.");
   }
 

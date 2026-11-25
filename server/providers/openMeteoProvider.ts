@@ -263,11 +263,16 @@ export async function fetchOpenMeteoForecast(params: {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const [aqRes, weatherRes] = await Promise.all([
-      fetchImpl(aqUrl.toString(), { signal: controller.signal }),
-      fetchImpl(weatherUrl.toString(), { signal: controller.signal }),
-    ]);
-    clearTimeout(timer);
+    let aqRes: Response;
+    let weatherRes: Response;
+    try {
+      [aqRes, weatherRes] = await Promise.all([
+        fetchImpl(aqUrl.toString(), { signal: controller.signal }),
+        fetchImpl(weatherUrl.toString(), { signal: controller.signal }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!aqRes.ok) {
       throw new Error(`Open-Meteo Air Quality returned HTTP ${aqRes.status}`);

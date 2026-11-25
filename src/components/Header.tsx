@@ -49,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 key={item.id}
                 type="button"
+                aria-current={isActive ? "location" : undefined}
                 onClick={() => onNavigate(item.id)}
                 className={`py-1.5 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700 ${
                   isActive
@@ -83,8 +84,9 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               key={item.id}
               type="button"
+              aria-current={isActive ? "location" : undefined}
               onClick={() => onNavigate(item.id)}
-              className={`py-1 text-xs font-medium whitespace-nowrap shrink-0 border-b-2 transition-colors cursor-pointer ${
+              className={`py-1 text-xs font-medium whitespace-nowrap shrink-0 border-b-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
                 isActive
                   ? "border-teal-700 text-slate-900"
                   : "border-transparent text-slate-600"
