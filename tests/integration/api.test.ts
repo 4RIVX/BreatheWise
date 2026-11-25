@@ -295,11 +295,18 @@ describe("Express API Integration & Security Tests", () => {
     expect(() => loadServerConfig({ ALLOWED_ORIGIN: "*" })).toThrow(
       /Wildcard/i
     );
-    const defaultProdConfig = loadServerConfig({
-      NODE_ENV: "production",
-      ALLOWED_ORIGIN: "",
-    });
-    expect(defaultProdConfig.allowedOrigins.length).toBeGreaterThan(0);
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        ALLOWED_ORIGIN: "",
+      })
+    ).toThrow(/ALLOWED_ORIGIN is required in production/i);
+
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+      })
+    ).toThrow(/ALLOWED_ORIGIN is required in production/i);
 
     const redisFallbackProdConfig = loadServerConfig({
       NODE_ENV: "production",
@@ -337,6 +344,7 @@ describe("Express API Integration & Security Tests", () => {
     expect(() =>
       loadServerConfig({
         NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
         RATE_LIMIT_REDIS_REST_URL: "https://redis.example",
       })
     ).toThrow(/Partial Redis/i);
@@ -344,6 +352,7 @@ describe("Express API Integration & Security Tests", () => {
     expect(() =>
       loadServerConfig({
         NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
         RATE_LIMIT_REDIS_REST_TOKEN: "tok",
       })
     ).toThrow(/Partial Redis/i);
@@ -352,6 +361,7 @@ describe("Express API Integration & Security Tests", () => {
     expect(() =>
       loadServerConfig({
         NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
         RATE_LIMIT_REDIS_REST_URL: "http://redis.external.example",
         RATE_LIMIT_REDIS_REST_TOKEN: "tok",
       })
@@ -361,6 +371,7 @@ describe("Express API Integration & Security Tests", () => {
     expect(() =>
       loadServerConfig({
         NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
         DEPLOYMENT_TOPOLOGY: "multi-instance",
       })
     ).toThrow(/Multi-instance production/i);
@@ -368,6 +379,7 @@ describe("Express API Integration & Security Tests", () => {
     expect(() =>
       loadServerConfig({
         NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
         REQUIRE_DISTRIBUTED_RATE_LIMIT: "true",
       })
     ).toThrow(/Multi-instance production/i);

@@ -131,7 +131,9 @@ function parseAllowedOrigins(
 
   if (nodeEnv === "production") {
     if (normalized.length === 0) {
-      return DEFAULT_DEV_ALLOWED_ORIGINS;
+      throw new Error(
+        "ALLOWED_ORIGIN is required in production (provide a comma-separated list of explicit http/https origins)."
+      );
     }
     return Array.from(new Set(normalized));
   }
