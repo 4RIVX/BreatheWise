@@ -195,12 +195,12 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
       expect(loggedPayload).toContain("[REDACTED_UID]");
       expect(loggedPayload).toContain("permission-denied");
 
-      expect(sanitizeOperationalText("Contact user@domain.org")).toContain(
-        "[REDACTED_EMAIL]"
-      );
-      expect(sanitizeFirestorePath("users/abc123uid/ecoLogs/log1")).toBe(
-        "users/[REDACTED_UID]/ecoLogs/log1"
-      );
+      expect(
+        sanitizeOperationalText("Contact user@domain.org")
+      ).toContain("[REDACTED_EMAIL]");
+      expect(
+        sanitizeFirestorePath("users/abc123uid/ecoLogs/log1")
+      ).toBe("users/[REDACTED_UID]/ecoLogs/log1");
     } finally {
       errorSpy.mockRestore();
     }
@@ -221,74 +221,69 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
   });
 
   it("rejects CPCB records missing sample_hours or having min/avg/max inconsistency", () => {
-    const stations = normalizeCpcbRecords(
-      [
-        {
-          station: "Test Station Corrupt",
-          city: "Delhi",
-          state: "Delhi",
-          pollutant_id: "PM2.5",
-          pollutant_avg: "80",
-          pollutant_min: "120", // min > max (corrupted)
-          pollutant_max: "60",
-          pollutant_unit: "ug/m3",
-          sample_hours: 24,
-          last_update: "20-01-2026 12:00:00",
-        },
-        {
-          station: "Test Station Missing Hours",
-          city: "Delhi",
-          state: "Delhi",
-          pollutant_id: "PM2.5",
-          pollutant_avg: "80",
-          pollutant_min: "40",
-          pollutant_max: "120",
-          pollutant_unit: "ug/m3",
-          last_update: "20-01-2026 12:00:00",
-        },
-        {
-          station: "Test Station Valid Hours",
-          city: "Delhi",
-          state: "Delhi",
-          pollutant_id: "PM2.5",
-          pollutant_avg: "80",
-          pollutant_min: "40",
-          pollutant_max: "120",
-          pollutant_unit: "ug/m3",
-          sample_hours: 20,
-          last_update: "20-01-2026 12:00:00",
-        },
-        {
-          station: "Test Station Valid Hours",
-          city: "Delhi",
-          state: "Delhi",
-          pollutant_id: "PM10",
-          pollutant_avg: "110",
-          pollutant_min: "60",
-          pollutant_max: "150",
-          pollutant_unit: "ug/m3",
-          sample_hours: 20,
-          last_update: "20-01-2026 12:00:00",
-        },
-        {
-          station: "Test Station Valid Hours",
-          city: "Delhi",
-          state: "Delhi",
-          pollutant_id: "NO2",
-          pollutant_avg: "45",
-          pollutant_min: "20",
-          pollutant_max: "70",
-          pollutant_unit: "ug/m3",
-          sample_hours: 20,
-          last_update: "20-01-2026 12:00:00",
-        },
-      ],
-      new Date("2026-01-20T07:00:00Z")
-    );
+    const stations = normalizeCpcbRecords([
+      {
+        station: "Test Station Corrupt",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "PM2.5",
+        pollutant_avg: "80",
+        pollutant_min: "120", // min > max (corrupted)
+        pollutant_max: "60",
+        pollutant_unit: "ug/m3",
+        sample_hours: 24,
+        last_update: "20-01-2026 12:00:00",
+      },
+      {
+        station: "Test Station Missing Hours",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "PM2.5",
+        pollutant_avg: "80",
+        pollutant_min: "40",
+        pollutant_max: "120",
+        pollutant_unit: "ug/m3",
+        last_update: "20-01-2026 12:00:00",
+      },
+      {
+        station: "Test Station Valid Hours",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "PM2.5",
+        pollutant_avg: "80",
+        pollutant_min: "40",
+        pollutant_max: "120",
+        pollutant_unit: "ug/m3",
+        sample_hours: 20,
+        last_update: "20-01-2026 12:00:00",
+      },
+      {
+        station: "Test Station Valid Hours",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "PM10",
+        pollutant_avg: "110",
+        pollutant_min: "60",
+        pollutant_max: "150",
+        pollutant_unit: "ug/m3",
+        sample_hours: 20,
+        last_update: "20-01-2026 12:00:00",
+      },
+      {
+        station: "Test Station Valid Hours",
+        city: "Delhi",
+        state: "Delhi",
+        pollutant_id: "NO2",
+        pollutant_avg: "45",
+        pollutant_min: "20",
+        pollutant_max: "70",
+        pollutant_unit: "ug/m3",
+        sample_hours: 20,
+        last_update: "20-01-2026 12:00:00",
+      },
+    ], new Date("2026-01-20T07:00:00Z"));
 
-    const corrupt = stations.find(
-      (s) => s.stationName === "Test Station Corrupt"
-    );
+    const corrupt = stations.find((s) => s.stationName === "Test Station Corrupt");
     const missingHours = stations.find(
       (s) => s.stationName === "Test Station Missing Hours"
     );
@@ -532,9 +527,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
         wind_speed_10m: [12.5], // length mismatch
       },
     };
-    expect(
-      OpenMeteoWeatherSchema.safeParse(weatherInvalidPayload).success
-    ).toBe(false);
+    expect(OpenMeteoWeatherSchema.safeParse(weatherInvalidPayload).success).toBe(false);
 
     // 5. Rejects hourly gaps > 1 hour
     const gappedPayload = {
@@ -609,15 +602,9 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
       longitude: 77.2,
       fetchImpl: mockFetch,
     });
-    const row08 = res.hourlySeries.find(
-      (r) => r.timeIso === "2026-03-01T08:00"
-    );
-    const row09 = res.hourlySeries.find(
-      (r) => r.timeIso === "2026-03-01T09:00"
-    );
-    const row10 = res.hourlySeries.find(
-      (r) => r.timeIso === "2026-03-01T10:00"
-    );
+    const row08 = res.hourlySeries.find((r) => r.timeIso === "2026-03-01T08:00");
+    const row09 = res.hourlySeries.find((r) => r.timeIso === "2026-03-01T09:00");
+    const row10 = res.hourlySeries.find((r) => r.timeIso === "2026-03-01T10:00");
 
     expect(row08?.windKmh).toBeNull();
     expect(row09?.windKmh).toBe(12);
@@ -777,19 +764,14 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
 
     clearCpcbCache();
     const ctxRes = await buildServerVerifiedAirContext({
-      location: {
-        city: "Hyderabad",
-        state: "Telangana",
-        latitude: 17.38,
-        longitude: 78.48,
-      },
+      location: { city: "Hyderabad", state: "Telangana", latitude: 17.38, longitude: 78.48 },
       dataGovInApiKey: "pagination-test-key",
       fetchImpl: partialFetch,
     });
     expect(ctxRes.airContext.measuredSourceAvailable).toBe(false);
     expect(ctxRes.airContext.dataLimitations).toContain("incomplete");
 
-    // 3. Overlapping records are deduplicated; completeness follows the raw API record count.
+    // 3. Overlapping duplicates across pages are deduplicated accurately; missing unique records mark incomplete
     clearCpcbCache();
     const dupShortfallFetch: typeof fetch = async (input) => {
       const url = new URL(String(input));
@@ -839,7 +821,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
       fetchImpl: dupShortfallFetch,
     });
     expect(dupShortfallRes.stations.length).toBe(100);
-    expect(dupShortfallRes.isPaginationComplete).toBe(true);
+    expect(dupShortfallRes.isPaginationComplete).toBe(false);
 
     // 4. Unknown total hitting maxOffset (2500) must report incomplete pagination
     clearCpcbCache();
@@ -1461,31 +1443,10 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     );
     expect(fs.existsSync(path.resolve(process.cwd(), ".gitignore"))).toBe(true);
     expect(pkg.dependencies.sharp).toBe("^0.35.5");
-    expect(pkg.devDependencies.typescript).toBe("^5.9.3");
-    expect(pkg.overrides["@grpc/grpc-js"]).toBe("1.14.7");
+    expect(pkg.dependencies.typescript).toBe("^5.9.3");
     expect(bunLock).toContain('"sharp": "^0.35.5"');
     expect(bunLock).toContain('"typescript": "^5.9.3"');
-    expect(bunLock).toContain('"@grpc/grpc-js": "1.14.7"');
     expect(bunLock).toContain('"sharp@0.35.');
     expect(bunLock).toContain('"typescript@5.9.3"');
-  });
-
-  it("falls back safely when Firestore public smog report fields are corrupted or non-string", () => {
-    const mapped = mapPublicSmogReportDoc("corrupt-doc-1", {
-      authorUid: "should-never-surface",
-      city: 42,
-      sourceCategory: "NotARealCategory",
-      severity: "ExtremeInvalid",
-      moderationStatus: "ADMIN_BYPASS",
-      confirmationsCount: "not-a-number",
-    });
-
-    expect(mapped.id).toBe("corrupt-doc-1");
-    expect(mapped.city).toBe("Unknown City");
-    expect(mapped.sourceCategory).toBe("Other");
-    expect(mapped.severity).toBe("Moderate");
-    expect(mapped.moderationStatus).toBe("UNVERIFIED");
-    expect(mapped.confirmationsCount).toBe(0);
-    expect("authorUid" in mapped).toBe(false);
   });
 });

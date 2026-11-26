@@ -4,23 +4,50 @@ import express, {
   type Request,
   type Response,
 } from "express";
-import compression from "compression";
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit, { type Store } from "express-rate-limit";
+import { z } from "zod";
 import { loadServerConfig, type ServerConfig } from "./config.ts";
 import { verifyBearerToken } from "./firebaseAdmin.ts";
-import { type GeminiClientLike } from "./services/geminiService.ts";
+import {
+  fetchCpcbStations,
+  getCpcbCacheStats,
+  type CpcbProviderResponse,
+} from "./providers/cpcbProvider.ts";
+import {
+  fetchOpenAqHourlyStations,
+  type OpenAqProviderResponse,
+} from "./providers/openAqProvider.ts";
+import {
+  fetchOpenMeteoForecast,
+  getOpenMeteoCacheStats,
+  type OpenMeteoForecastResult,
+} from "./providers/openMeteoProvider.ts";
+import {
+  createGeminiClient,
+  type GeminiClientLike,
+} from "./services/geminiService.ts";
+import {
+  AiOrchestrationError,
+  runAskWithFallback,
+  runGuidanceWithFallback,
+} from "./services/aiOrchestrator.ts";
+import { buildServerVerifiedAirContext } from "./services/verifiedAirContextBuilder.ts";
+import { verifyAndSanitizeImage } from "./utils/imageSanitizer.ts";
 import {
   createRateLimitStore,
   DistributedRateLimitUnavailableError,
   MemoryRateLimitStore,
   RedisRestRateLimitStore,
 } from "./utils/rateLimitStore.ts";
-import { createHealthRouter } from "./routes/healthRoutes.ts";
-import { createAirQualityRouter } from "./routes/airQualityRoutes.ts";
-import { createAiRouter } from "./routes/aiRoutes.ts";
-import { createUploadRouter } from "./routes/uploadRoutes.ts";
+import {
+  AirQualityQuerySchema,
+  AskRequestSchema,
+  AskResponseSchema,
+  GuidanceRequestSchema,
+  GuidanceResponseSchema,
+} from "../src/domain/schemas.ts";
 
 export interface AppDependencies {
   config?: ServerConfig;
@@ -34,44 +61,16 @@ export interface AppDependencies {
   rateLimitStore?: Store;
 }
 
-declare module "express-serve-static-core" {
-  interface Request {
-    verifiedUid?: string | null;
-  }
+interface RequestWithCaller extends Request {
+  verifiedUid?: string | null;
 }
 
-interface ExpressHttpError extends Error {
-  status?: number;
-  type?: string;
-}
+const UploadPhotoSchema = z.object({
+  imageDataUrl: z.string().min(20).max(3_200_000),
+});
 
 function hashIdentifier(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex").slice(0, 24);
-}
-
-function buildRateLimitStore(
-  limiterEnabled: boolean,
-  deps: AppDependencies,
-  config: ServerConfig,
-  fetchImpl: typeof fetch,
-  scope: "api" | "ai"
-): Store {
-  if (!limiterEnabled) {
-    return new MemoryRateLimitStore({ prefix: `disabled-${scope}:` });
-  }
-  if (deps.rateLimitStore instanceof MemoryRateLimitStore) {
-    return new MemoryRateLimitStore({
-      sharedHits: deps.rateLimitStore.hits,
-      prefix: `${scope}:`,
-    });
-  }
-  if (deps.rateLimitStore instanceof RedisRestRateLimitStore) {
-    return deps.rateLimitStore.withPrefix(`bw:dist:${scope}:`);
-  }
-  return (
-    deps.rateLimitStore ??
-    createRateLimitStore(config, fetchImpl, `bw:dist:${scope}:`)
-  );
 }
 
 export function createApp(deps: AppDependencies = {}) {
@@ -80,60 +79,24 @@ export function createApp(deps: AppDependencies = {}) {
   const verifyTokenFn = deps.verifyTokenFn ?? verifyBearerToken;
 
   const app = express();
-  app.disable("x-powered-by");
   app.set("trust proxy", 1);
-  app.use(compression());
 
   app.use(
     helmet({
-      contentSecurityPolicy:
-        config.nodeEnv === "production"
-          ? {
-              useDefaults: false,
-              directives: {
-                "default-src": ["'self'"],
-                "script-src": ["'self'", "https://apis.google.com"],
-                "style-src": ["'self'"],
-                "style-src-attr": ["'unsafe-inline'"],
-                "font-src": ["'self'"],
-                "img-src": [
-                  "'self'",
-                  "data:",
-                  "blob:",
-                  "https://*.googleusercontent.com",
-                ],
-                "connect-src": [
-                  "'self'",
-                  "https://*.googleapis.com",
-                  "https://*.firebaseapp.com",
-                ],
-                "frame-src": [
-                  "https://*.firebaseapp.com",
-                  "https://accounts.google.com",
-                ],
-                "object-src": ["'none'"],
-                "base-uri": ["'self'"],
-                "form-action": ["'self'"],
-                "frame-ancestors": ["'none'"],
-                "upgrade-insecure-requests": [],
-              },
-            }
-          : false,
+      contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
-      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     })
   );
-
-  app.use("/api", (_req, res, next) => {
-    res.setHeader("Cache-Control", "no-store");
-    next();
-  });
 
   app.use(
     cors({
       origin(origin, callback) {
         // Same-origin / server-to-server requests without an Origin header
-        if (!origin || config.allowedOrigins.includes(origin)) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (config.allowedOrigins.includes(origin)) {
           callback(null, true);
           return;
         }
@@ -149,20 +112,28 @@ export function createApp(deps: AppDependencies = {}) {
   app.use(express.json({ limit: "256kb" }));
 
   const limiterEnabled = deps.enableRateLimit !== false;
-  const apiStore = buildRateLimitStore(
-    limiterEnabled,
-    deps,
-    config,
-    fetchImpl,
-    "api"
-  );
-  const aiStore = buildRateLimitStore(
-    limiterEnabled,
-    deps,
-    config,
-    fetchImpl,
-    "ai"
-  );
+  const apiStore = !limiterEnabled
+    ? new MemoryRateLimitStore({ prefix: "disabled-api:" })
+    : deps.rateLimitStore instanceof MemoryRateLimitStore
+      ? new MemoryRateLimitStore({
+          sharedHits: deps.rateLimitStore.hits,
+          prefix: "api:",
+        })
+      : deps.rateLimitStore instanceof RedisRestRateLimitStore
+        ? deps.rateLimitStore.withPrefix("bw:dist:api:")
+        : (deps.rateLimitStore ??
+          createRateLimitStore(config, fetchImpl, "bw:dist:api:"));
+  const aiStore = !limiterEnabled
+    ? new MemoryRateLimitStore({ prefix: "disabled-ai:" })
+    : deps.rateLimitStore instanceof MemoryRateLimitStore
+      ? new MemoryRateLimitStore({
+          sharedHits: deps.rateLimitStore.hits,
+          prefix: "ai:",
+        })
+      : deps.rateLimitStore instanceof RedisRestRateLimitStore
+        ? deps.rateLimitStore.withPrefix("bw:dist:ai:")
+        : (deps.rateLimitStore ??
+          createRateLimitStore(config, fetchImpl, "bw:dist:ai:"));
 
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -182,7 +153,7 @@ export function createApp(deps: AppDependencies = {}) {
   });
 
   const resolveAiCallerMiddleware = async (
-    req: Request,
+    req: RequestWithCaller,
     res: Response,
     next: NextFunction
   ) => {
@@ -206,7 +177,8 @@ export function createApp(deps: AppDependencies = {}) {
       if (deps.rateLimitMax !== undefined) {
         return deps.rateLimitMax;
       }
-      return req.verifiedUid
+      const caller = req as RequestWithCaller;
+      return caller.verifiedUid
         ? config.aiAuthenticatedRateLimitMax
         : config.aiAnonymousRateLimitMax;
     },
@@ -217,8 +189,9 @@ export function createApp(deps: AppDependencies = {}) {
     skip: () => !limiterEnabled,
     validate: { keyGeneratorIpFallback: false },
     keyGenerator: (req, _res) => {
-      if (req.verifiedUid) {
-        return `ai:user:${hashIdentifier(req.verifiedUid)}`;
+      const caller = req as RequestWithCaller;
+      if (caller.verifiedUid) {
+        return `ai:user:${hashIdentifier(caller.verifiedUid)}`;
       }
       return `ai:anon:${hashIdentifier(req.ip || req.socket.remoteAddress || "unknown")}`;
     },
@@ -228,83 +201,393 @@ export function createApp(deps: AppDependencies = {}) {
     },
   });
 
-  app.use(
-    "/api/health",
-    createHealthRouter({
-      config,
-      geminiClientOverride: deps.geminiClient,
-    })
-  );
+  app.get("/api/health", (_req: Request, res: Response) => {
+    const geminiConfigured =
+      deps.geminiClient !== undefined
+        ? Boolean(deps.geminiClient)
+        : Boolean(config.geminiApiKey);
+    const groqConfigured = Boolean(config.groqApiKey);
 
-  app.use(
+    const primaryConfigured =
+      config.aiProvider === "gemini" ? geminiConfigured : groqConfigured;
+    const primaryModel =
+      config.aiProvider === "gemini" ? config.geminiModel : config.groqModel;
+
+    const fallbackConfigured =
+      config.aiFallbackProvider === "gemini"
+        ? geminiConfigured
+        : config.aiFallbackProvider === "groq"
+          ? groqConfigured
+          : false;
+    const fallbackModel =
+      config.aiFallbackProvider === "gemini"
+        ? config.geminiModel
+        : config.aiFallbackProvider === "groq"
+          ? config.groqModel
+          : null;
+
+    res.json({
+      ok: true,
+      service: "breathewise",
+      environment: config.nodeEnv,
+      capabilities: {
+        activeProvider: config.aiProvider,
+        primaryProvider: {
+          provider: config.aiProvider,
+          model: primaryModel,
+          configured: primaryConfigured,
+        },
+        fallbackProvider: {
+          provider: config.aiFallbackProvider,
+          model: fallbackModel,
+          configured: fallbackConfigured,
+          enabled: Boolean(config.aiFallbackProvider && fallbackConfigured),
+        },
+        geminiConfigured,
+        geminiModel: config.geminiModel,
+        groqConfigured,
+        groqModel: config.groqModel,
+        aiFallbackEnabled: Boolean(
+          config.aiFallbackProvider && fallbackConfigured
+        ),
+        cpcbApiConfigured: Boolean(config.dataGovInApiKey),
+        openAqApiConfigured: Boolean(config.openAqApiKey),
+        openMeteoEnabled: true,
+        aiAuthRequired: config.requireAiAuth,
+        distributedRateLimitConfigured: Boolean(
+          config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken
+        ),
+      },
+      cache: {
+        cpcb: getCpcbCacheStats(),
+        openMeteo: getOpenMeteoCacheStats(),
+      },
+      timestampIso: new Date().toISOString(),
+    });
+  });
+
+  app.get(
     "/api/air-quality",
-    createAirQualityRouter({
-      config,
-      fetchImpl,
-      apiLimiter,
-    })
-  );
+    apiLimiter,
+    async (req: Request, res: Response) => {
+      const parsed = AirQualityQuerySchema.safeParse({
+        city: req.query.city,
+        state: req.query.state,
+        latitude: req.query.latitude,
+        longitude: req.query.longitude,
+      });
 
-  app.use(
-    "/api/gemini",
-    createAiRouter({
-      config,
-      fetchImpl,
-      geminiClientOverride: deps.geminiClient,
-      resolveAiCallerMiddleware,
-      aiLimiter,
-    })
-  );
-
-  app.use(
-    "/api/uploads/smog-photo",
-    createUploadRouter({
-      verifyTokenFn,
-      apiLimiter,
-    })
-  );
-
-  // Safe JSON error handler (never leaks stack traces)
-  app.use(
-    (
-      err: ExpressHttpError,
-      _req: Request,
-      res: Response,
-      _next: NextFunction
-    ) => {
-      const errorDetails =
-        err && typeof err === "object" ? (err as ExpressHttpError) : undefined;
-      const message = err instanceof Error ? err.message : String(err ?? "");
-
-      if (err instanceof DistributedRateLimitUnavailableError) {
-        res.status(503).json({
-          error: "Rate-limit enforcement temporarily unavailable.",
-          code: "RATE_LIMIT_STORE_UNAVAILABLE",
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Invalid location parameters.",
+          details: parsed.error.issues.map((i) => i.message),
         });
         return;
       }
-      if (message.includes("CORS")) {
-        res.status(403).json({ error: "Origin not permitted." });
-        return;
-      }
-      if (
-        errorDetails?.type === "entity.too.large" ||
-        message.includes("entity too large")
-      ) {
-        res.status(413).json({ error: "Request payload exceeds size limit." });
-        return;
-      }
-      if (
-        err instanceof SyntaxError ||
-        errorDetails?.type === "entity.parse.failed" ||
-        errorDetails?.status === 400
-      ) {
-        res.status(400).json({ error: "Malformed JSON request body." });
-        return;
-      }
-      res.status(500).json({ error: "Internal server error." });
+
+      const { city, state, latitude, longitude } = parsed.data;
+
+      const [cpcb, openAq, openMeteo]: [
+        CpcbProviderResponse,
+        OpenAqProviderResponse,
+        OpenMeteoForecastResult,
+      ] = await Promise.all([
+        fetchCpcbStations({
+          city,
+          state,
+          apiKey: config.dataGovInApiKey,
+          fetchImpl,
+        }),
+        fetchOpenAqHourlyStations({
+          city,
+          state,
+          latitude,
+          longitude,
+          apiKey: config.openAqApiKey,
+          fetchImpl,
+        }),
+        fetchOpenMeteoForecast({
+          latitude,
+          longitude,
+          fetchImpl,
+        }),
+      ]);
+
+      const measured: CpcbProviderResponse =
+        openAq.status === "available" && openAq.stations.length > 0
+          ? {
+              status: "available",
+              message:
+                cpcb.status === "available"
+                  ? `${openAq.stations.length} OpenAQ v3 hourly station(s) + ${cpcb.stations.length} CPCB station(s) loaded for ${city}.`
+                  : openAq.message,
+              resourceId:
+                cpcb.status === "available" ? cpcb.resourceId : "openaq-v3",
+              stations: [
+                ...openAq.stations,
+                ...(cpcb.status === "available" ? cpcb.stations : []),
+              ],
+              cached:
+                openAq.cached && (cpcb.status !== "available" || cpcb.cached),
+              fetchedAtIso: openAq.fetchedAtIso,
+              totalRecordsReported: cpcb.totalRecordsReported,
+              isPaginationComplete:
+                cpcb.status === "available" ? cpcb.isPaginationComplete : true,
+            }
+          : cpcb;
+
+      const bothUnavailable =
+        measured.status === "unavailable" && openMeteo.status === "unavailable";
+
+      res.status(bothUnavailable ? 503 : 200).json({
+        location: { city, state: state ?? null, latitude, longitude },
+        measured,
+        modelled: openMeteo,
+        retrievedAtIso: new Date().toISOString(),
+      });
     }
   );
+
+  app.post(
+    "/api/gemini/guidance",
+    resolveAiCallerMiddleware,
+    aiLimiter,
+    async (req: Request, res: Response) => {
+      const client =
+        deps.geminiClient !== undefined
+          ? deps.geminiClient
+          : createGeminiClient(config.geminiApiKey);
+
+      const primaryConfigured =
+        config.aiProvider === "gemini"
+          ? Boolean(client)
+          : Boolean(config.groqApiKey);
+
+      if (!primaryConfigured) {
+        res.status(503).json({
+          error: `Primary AI provider (${config.aiProvider}) is not configured in Settings > Secrets.`,
+          code:
+            config.aiProvider === "gemini"
+              ? "GEMINI_UNCONFIGURED"
+              : "AI_UNCONFIGURED",
+        });
+        return;
+      }
+
+      const parsed = GuidanceRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Invalid guidance request payload.",
+          details: parsed.error.issues.map((i) => i.message),
+        });
+        return;
+      }
+
+      try {
+        const verified = await buildServerVerifiedAirContext({
+          location: parsed.data.location,
+          dataGovInApiKey: config.dataGovInApiKey,
+          openAqApiKey: config.openAqApiKey,
+          fetchImpl,
+        });
+
+        const result = await runGuidanceWithFallback({
+          primaryProvider: config.aiProvider,
+          fallbackProvider: config.aiFallbackProvider,
+          geminiClient: client,
+          geminiModel: config.geminiModel,
+          groqApiKey: config.groqApiKey,
+          groqModel: config.groqModel,
+          airContext: verified.airContext,
+          household: parsed.data.household,
+          fetchImpl,
+        });
+
+        const responseBody = GuidanceResponseSchema.parse({
+          guidance: result.guidance,
+          provider: result.provider,
+          model: result.model,
+          fallbackUsed: result.fallbackUsed,
+          fallbackReason: result.fallbackReason,
+          dataProvenance: verified.dataProvenance,
+          generatedAtIso: new Date().toISOString(),
+        });
+
+        res.json(responseBody);
+      } catch (err) {
+        if (err instanceof AiOrchestrationError) {
+          res.status(err.status).json({
+            error: err.message,
+            code: err.code,
+            primaryError: err.primaryError,
+            secondaryError: err.secondaryError,
+          });
+          return;
+        }
+        res
+          .status(502)
+          .json({ error: "Unable to reach AI providers right now." });
+      }
+    }
+  );
+
+  app.post(
+    "/api/gemini/ask",
+    resolveAiCallerMiddleware,
+    aiLimiter,
+    async (req: Request, res: Response) => {
+      const client =
+        deps.geminiClient !== undefined
+          ? deps.geminiClient
+          : createGeminiClient(config.geminiApiKey);
+
+      const primaryConfigured =
+        config.aiProvider === "gemini"
+          ? Boolean(client)
+          : Boolean(config.groqApiKey);
+
+      if (!primaryConfigured) {
+        res.status(503).json({
+          error: `Primary AI provider (${config.aiProvider}) is not configured in Settings > Secrets.`,
+          code:
+            config.aiProvider === "gemini"
+              ? "GEMINI_UNCONFIGURED"
+              : "AI_UNCONFIGURED",
+        });
+        return;
+      }
+
+      const parsed = AskRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Invalid question payload.",
+          details: parsed.error.issues.map((i) => i.message),
+        });
+        return;
+      }
+
+      try {
+        const verified = await buildServerVerifiedAirContext({
+          location: parsed.data.location,
+          dataGovInApiKey: config.dataGovInApiKey,
+          openAqApiKey: config.openAqApiKey,
+          fetchImpl,
+        });
+
+        const result = await runAskWithFallback({
+          primaryProvider: config.aiProvider,
+          fallbackProvider: config.aiFallbackProvider,
+          geminiClient: client,
+          geminiModel: config.geminiModel,
+          groqApiKey: config.groqApiKey,
+          groqModel: config.groqModel,
+          question: parsed.data.question,
+          airContext: verified.airContext,
+          household: parsed.data.household,
+          completedRoutines: parsed.data.completedRoutines,
+          fetchImpl,
+        });
+
+        const responseBody = AskResponseSchema.parse({
+          answer: result.answer,
+          provider: result.provider,
+          model: result.model,
+          fallbackUsed: result.fallbackUsed,
+          fallbackReason: result.fallbackReason,
+          dataProvenance: verified.dataProvenance,
+          generatedAtIso: new Date().toISOString(),
+        });
+
+        res.json(responseBody);
+      } catch (err) {
+        if (err instanceof AiOrchestrationError) {
+          res.status(err.status).json({
+            error: err.message,
+            code: err.code,
+            primaryError: err.primaryError,
+            secondaryError: err.secondaryError,
+          });
+          return;
+        }
+        res
+          .status(502)
+          .json({ error: "Unable to reach AI providers right now." });
+      }
+    }
+  );
+
+  // Protected route: verifies Firebase ID token, binary-decodes via sharp, strips EXIF/GPS & re-encodes to WebP
+  app.post(
+    "/api/uploads/smog-photo",
+    apiLimiter,
+    async (req: Request, res: Response) => {
+      const decoded = await verifyTokenFn(req.headers.authorization);
+      if (!decoded) {
+        res.status(401).json({
+          error:
+            "Authentication required. Please sign in with Google to attach a photo.",
+        });
+        return;
+      }
+      if (decoded.email_verified !== true) {
+        res.status(403).json({
+          error:
+            "A verified email account is required to upload observation photos.",
+        });
+        return;
+      }
+
+      const parsed = UploadPhotoSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Invalid photo upload payload.",
+        });
+        return;
+      }
+
+      try {
+        const sanitized = await verifyAndSanitizeImage(
+          parsed.data.imageDataUrl
+        );
+        res.json({
+          photoDataUrl: sanitized.dataUrl,
+          format: sanitized.format,
+          mimeType: sanitized.mimeType,
+          width: sanitized.width,
+          height: sanitized.height,
+          sanitizedBytes: sanitized.sanitizedBytes,
+          metadataStripped: sanitized.metadataStripped,
+        });
+      } catch (err) {
+        res.status(400).json({
+          error:
+            err instanceof Error
+              ? err.message
+              : "Photo failed binary safety validation.",
+        });
+      }
+    }
+  );
+
+  // Safe JSON error handler (never leaks stack traces)
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof DistributedRateLimitUnavailableError) {
+      res.status(503).json({
+        error: "Rate-limit enforcement temporarily unavailable.",
+        code: "RATE_LIMIT_STORE_UNAVAILABLE",
+      });
+      return;
+    }
+    if (err.message.includes("CORS")) {
+      res.status(403).json({ error: "Origin not permitted." });
+      return;
+    }
+    if (err.message.includes("entity too large")) {
+      res.status(413).json({ error: "Request payload exceeds size limit." });
+      return;
+    }
+    res.status(500).json({ error: "Internal server error." });
+  });
 
   return app;
 }

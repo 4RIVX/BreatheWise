@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { AlertTriangle, RefreshCw, Send } from "lucide-react";
 import type { HouseholdContext, StructuredGuidance } from "../domain/schemas";
 import type { TranslationBundle } from "../domain/i18n";
@@ -89,14 +89,6 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const turnSeqRef = useRef(0);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   const submitQuestion = async (promptText: string) => {
     const trimmed = promptText.trim();
@@ -121,7 +113,6 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
 
     try {
       const result = await onAskQuestion(trimmed);
-      if (!mountedRef.current) return;
       const normalized: AskQuestionResult =
         typeof result === "string" ? { answer: result } : result;
       turnSeqRef.current += 1;
@@ -142,16 +133,13 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
         },
       ]);
     } catch (err) {
-      if (!mountedRef.current) return;
       setChatError(
         err instanceof Error
           ? err.message
           : "Unable to get a response from AI Family Guardian."
       );
     } finally {
-      if (mountedRef.current) {
-        setChatLoading(false);
-      }
+      setChatLoading(false);
     }
   };
 
@@ -160,17 +148,14 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
       id="guardian"
       className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch"
     >
-      <div
-        className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 flex flex-col justify-between space-y-5"
-        aria-busy={guidanceLoading}
-      >
+      <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 flex flex-col justify-between space-y-5">
         <div className="space-y-5">
           <div className="pb-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">
                 {t.sections.guardianTitle}
               </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 {locationLabel} · Profile: {household.profileId} ·{" "}
                 {formatProviderLabel(
                   guidanceProvider,
@@ -183,10 +168,9 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
               type="button"
               onClick={onRefreshGuidance}
               disabled={guidanceLoading}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <RefreshCw
-                aria-hidden="true"
                 className={`w-3.5 h-3.5 ${guidanceLoading ? "animate-spin" : ""}`}
               />
               {guidanceLoading ? "Analyzing..." : t.actions.refreshGuidance}
@@ -210,10 +194,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
               role="alert"
               className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-start gap-3"
             >
-              <AlertTriangle
-                aria-hidden="true"
-                className="w-4 h-4 mt-0.5 shrink-0 text-amber-700"
-              />
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />
               <div className="space-y-1">
                 <p className="font-semibold">AI Family Guardian Unavailable</p>
                 <p className="text-xs text-amber-800 leading-relaxed">
@@ -240,7 +221,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
           )}
 
           {guidance && (
-            <div className="space-y-5" aria-live="polite">
+            <div className="space-y-5">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">
                   {guidance.headline}
@@ -252,7 +233,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                 <div>
-                  <p className="text-xs font-medium text-slate-600">
+                  <p className="text-xs font-medium text-slate-500">
                     Outdoor Activity Timing
                   </p>
                   <p className="text-sm text-slate-800 mt-1 leading-relaxed">
@@ -260,7 +241,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-slate-600">
+                  <p className="text-xs font-medium text-slate-500">
                     Mask & Respirator Guidance
                   </p>
                   <p className="text-sm text-slate-800 mt-1 leading-relaxed">
@@ -271,7 +252,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                 <div>
-                  <p className="text-xs font-medium text-slate-600 mb-2">
+                  <p className="text-xs font-medium text-slate-500 mb-2">
                     Household Recommendations
                   </p>
                   <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">
@@ -281,7 +262,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                   </ul>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-slate-600 mb-2">
+                  <p className="text-xs font-medium text-slate-500 mb-2">
                     Activities to Limit
                   </p>
                   <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">
@@ -293,7 +274,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
               </div>
 
               <div className="pt-4 border-t border-slate-100 space-y-2">
-                <p className="text-xs font-medium text-slate-600">
+                <p className="text-xs font-medium text-slate-500">
                   Indoor Protection & Commuting
                 </p>
                 <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">
@@ -308,7 +289,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
               </div>
 
               <div className="pt-4 border-t border-slate-100 space-y-2">
-                <p className="text-xs font-medium text-slate-600">
+                <p className="text-xs font-medium text-slate-500">
                   Next 24-Hour Action Plan & Reasoning
                 </p>
                 <ol className="space-y-1.5 text-sm text-slate-700 list-decimal pl-4">
@@ -344,7 +325,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
           )}
         </div>
 
-        <p className="text-xs text-slate-600 pt-3 border-t border-slate-100">
+        <p className="text-xs text-slate-500 pt-3 border-t border-slate-100">
           {t.disclaimers.medicalNote}
         </p>
       </div>
@@ -353,10 +334,10 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
       <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 flex flex-col justify-between">
         <div>
           <div className="pb-4 border-b border-slate-200">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Interactive AI Q&amp;A
-            </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Interactive AI Q&A
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
               Ask questions grounded in {locationLabel} air quality and your
               household profile.
             </p>
@@ -368,7 +349,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
           >
             {chatTurns.length === 0 ? (
               <div className="space-y-2">
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-slate-500">
                   Suggested family questions:
                 </p>
                 {EXAMPLE_QUESTIONS.map((q) => (
@@ -376,7 +357,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                     key={q}
                     type="button"
                     onClick={() => submitQuestion(q)}
-                    className="w-full text-left px-3.5 py-2.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                    className="w-full text-left px-3.5 py-2.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
                   >
                     {q}
                   </button>
@@ -392,7 +373,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                       : "bg-teal-50/70 border border-teal-200/80 text-slate-800 mr-4"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 mb-1">
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 mb-1">
                     <span className="font-medium">
                       {turn.role === "user"
                         ? "You"
@@ -403,7 +384,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
                     </span>
                   </div>
                   {turn.fallbackReason && (
-                    <p className="text-[11px] text-slate-600 mb-1.5">
+                    <p className="text-[11px] text-slate-500 mb-1.5">
                       {turn.fallbackReason}
                     </p>
                   )}
@@ -445,14 +426,14 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask about outdoor play, windows, masks..."
             aria-label="Ask AI Family Guardian a question"
-            className="flex-1 min-w-0 px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
+            className="flex-1 min-w-0 px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-teal-700"
           />
           <button
             type="submit"
             disabled={chatLoading || !question.trim()}
-            className="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+            className="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <Send aria-hidden="true" className="w-4 h-4" />
+            <Send className="w-4 h-4" />
             {t.actions.askAi}
           </button>
         </form>

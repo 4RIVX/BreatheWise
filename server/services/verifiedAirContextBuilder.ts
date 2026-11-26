@@ -18,12 +18,26 @@ import {
   type OpenMeteoForecastResult,
 } from "../providers/openMeteoProvider.ts";
 
-import { haversineKm } from "../utils/geo.ts";
-import { sanitizeLocationLabel } from "./aiContext.ts";
-
 export interface ServerVerifiedAirResult {
   airContext: VerifiedAirContext;
   dataProvenance: DataProvenance;
+}
+
+function calculateDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function selectBestEligibleStation(
@@ -59,13 +73,13 @@ function selectBestEligibleStation(
       typeof location.latitude === "number" &&
       typeof location.longitude === "number"
     ) {
-      const distA = haversineKm(
+      const distA = calculateDistanceKm(
         location.latitude,
         location.longitude,
         a.latitude,
         a.longitude
       );
-      const distB = haversineKm(
+      const distB = calculateDistanceKm(
         location.latitude,
         location.longitude,
         b.latitude,
@@ -145,9 +159,9 @@ export async function buildServerVerifiedAirContext(params: {
   const modelledAvailable =
     openMeteo.status === "available" && !openMeteo.stale;
 
-  const safeCity = sanitizeLocationLabel(location.city) || "Selected City";
-  const safeState = location.state ? sanitizeLocationLabel(location.state) : "";
-  const locationLabel = safeState ? `${safeCity}, ${safeState}` : safeCity;
+  const locationLabel = location.state?.trim()
+    ? `${location.city.trim()}, ${location.state.trim()}`
+    : location.city.trim();
 
   const dataLimitations = (() => {
     const parts: string[] = [];
@@ -206,7 +220,7 @@ export async function buildServerVerifiedAirContext(params: {
 
   const airContext = VerifiedAirContextSchema.parse({
     locationLabel,
-    state: safeState || undefined,
+    state: location.state?.trim() || undefined,
     measuredStationName: matchedStation?.stationName ?? null,
     measuredSourceLabel: matchedStation?.sourceLabel ?? null,
     measuredProviderAttribution:

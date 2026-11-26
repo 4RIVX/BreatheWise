@@ -3,7 +3,6 @@ export type UiLanguage = "en" | "ta";
 export interface TranslationBundle {
   brand: string;
   tagline: string;
-  documentTitle: string;
   nav: {
     dashboard: string;
     guardian: string;
@@ -46,7 +45,6 @@ export const TRANSLATIONS: Record<UiLanguage, TranslationBundle> = {
   en: {
     brand: "BreatheWise",
     tagline: "Understand Your Air. Protect Your People. Breathe Better.",
-    documentTitle: "BreatheWise — Air Quality & Family Protection",
     nav: {
       dashboard: "Air Quality",
       guardian: "AI Guardian",
@@ -92,7 +90,6 @@ export const TRANSLATIONS: Record<UiLanguage, TranslationBundle> = {
   ta: {
     brand: "BreatheWise",
     tagline: "உங்கள் காற்றை அறியுங்கள். குடும்பத்தைக் காப்போம். நலமுடன் சுவாசிப்போம்.",
-    documentTitle: "BreatheWise — காற்றுத் தரம் மற்றும் குடும்பப் பாதுகாப்பு",
     nav: {
       dashboard: "காற்று தரம்",
       guardian: "AI வழிகாட்டி",

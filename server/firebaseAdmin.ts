@@ -2,12 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { getApp, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type DecodedIdToken } from "firebase-admin/auth";
-import { z } from "zod";
 
-const FirebaseAppletConfigSchema = z.object({
-  projectId: z.string().optional(),
-  firestoreDatabaseId: z.string().optional(),
-});
+interface FirebaseAppletConfig {
+  projectId?: string;
+  firestoreDatabaseId?: string;
+}
 
 let cachedProjectId: string | null = null;
 
@@ -17,13 +16,15 @@ export function getFirebaseProjectId(): string | null {
   const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
   if (fs.existsSync(configPath)) {
     try {
-      const parsedJson: unknown = JSON.parse(
+      const raw = JSON.parse(
         fs.readFileSync(configPath, "utf-8")
-      );
-      const parsed = FirebaseAppletConfigSchema.safeParse(parsedJson);
-      const projectId = parsed.success ? parsed.data.projectId?.trim() : "";
-      if (projectId && projectId !== "remixed-project-id") {
-        cachedProjectId = projectId;
+      ) as FirebaseAppletConfig;
+      if (
+        raw.projectId &&
+        raw.projectId !== "remixed-project-id" &&
+        raw.projectId.trim().length > 0
+      ) {
+        cachedProjectId = raw.projectId.trim();
         return cachedProjectId;
       }
     } catch {

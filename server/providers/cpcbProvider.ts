@@ -10,7 +10,6 @@ import {
   type PollutantConcentrationInput,
 } from "../../src/domain/indianAqi.ts";
 import { TtlCache } from "../utils/cache.ts";
-import { sanitizeProviderErrorMessage } from "../utils/geo.ts";
 
 // Official data.gov.in resource ID for CPCB "Real-time Air Quality Index from various locations"
 export const CPCB_RESOURCE_ID = "3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69";
@@ -379,7 +378,6 @@ export async function fetchCpcbStations(params: {
 }): Promise<CpcbProviderResponse> {
   const { city, state, apiKey, fetchImpl = fetch } = params;
   const fetchedAtIso = new Date().toISOString();
-  const deadline = Date.now() + 20_000;
 
   if (!apiKey) {
     return {
@@ -412,17 +410,15 @@ export async function fetchCpcbStations(params: {
     let totalRecordsReported: number | null = null;
 
     while (hasMore && offset < maxOffset) {
-      if (Date.now() >= deadline) {
-        paginationFailed = true;
-        break;
-      }
-
       const url = new URL(CPCB_BASE_URL);
       url.searchParams.set("api-key", apiKey);
       url.searchParams.set("format", "json");
       url.searchParams.set("limit", String(limit));
       url.searchParams.set("offset", String(offset));
       url.searchParams.set("filters[city]", city);
+      if (state) {
+        url.searchParams.set("filters[state]", state);
+      }
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
@@ -483,7 +479,7 @@ export async function fetchCpcbStations(params: {
       !paginationFailed &&
       !hasMore &&
       (totalRecordsReported === null ||
-        rawRecordsFetched >= totalRecordsReported);
+        allRecords.length >= totalRecordsReported);
 
     const stations = normalizeCpcbRecords(allRecords);
     if (stations.length === 0) {
@@ -524,7 +520,7 @@ export async function fetchCpcbStations(params: {
       "code" in err.cause
         ? String((err.cause as { code?: unknown }).code ?? "")
         : "";
-    const detail = sanitizeProviderErrorMessage(err);
+    const detail = err instanceof Error ? err.message : "Network error";
     return {
       status: "unavailable",
       reason: "UPSTREAM_ERROR",

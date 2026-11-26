@@ -1,6 +1,4 @@
 export type AiProviderKind = "gemini" | "groq";
-export type DeploymentTopology = "single-instance" | "multi-instance";
-export type RateLimitStoreMode = "distributed-redis" | "single-instance-memory";
 
 export interface ServerConfig {
   port: number;
@@ -16,9 +14,6 @@ export interface ServerConfig {
   allowedOrigins: string[];
   rateLimitRedisRestUrl: string;
   rateLimitRedisRestToken: string;
-  deploymentTopology: DeploymentTopology;
-  requireDistributedRateLimit: boolean;
-  rateLimitMode: RateLimitStoreMode;
   aiAnonymousRateLimitMax: number;
   aiAuthenticatedRateLimitMax: number;
   requireAiAuth: boolean;
@@ -60,46 +55,6 @@ function parseAiFallbackProvider(
   return normalized;
 }
 
-function parseDeploymentTopology(
-  raw: string | undefined,
-  requireDistributed: boolean
-): DeploymentTopology {
-  const normalized = (raw ?? "").trim().toLowerCase();
-  if (!normalized) {
-    return requireDistributed ? "multi-instance" : "single-instance";
-  }
-  if (normalized === "single-instance" || normalized === "multi-instance") {
-    return normalized;
-  }
-  throw new Error(
-    `Invalid DEPLOYMENT_TOPOLOGY "${raw}". Supported values: "single-instance", "multi-instance".`
-  );
-}
-
-function validateRedisRestUrl(rawUrl: string, nodeEnv: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(
-      `Invalid RATE_LIMIT_REDIS_REST_URL: "${rawUrl}" is not a valid URL.`
-    );
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error(
-      "RATE_LIMIT_REDIS_REST_URL must use http: or https: protocol."
-    );
-  }
-  const isLoopback =
-    parsed.hostname === "localhost" ||
-    parsed.hostname === "127.0.0.1" ||
-    parsed.hostname === "::1";
-  if (nodeEnv === "production" && parsed.protocol !== "https:" && !isLoopback) {
-    throw new Error("RATE_LIMIT_REDIS_REST_URL must use https: in production.");
-  }
-  return rawUrl.replace(/\/+$/, "");
-}
-
 function parseAllowedOrigins(
   rawAllowedOrigin: string | undefined,
   nodeEnv: string
@@ -131,9 +86,10 @@ function parseAllowedOrigins(
 
   if (nodeEnv === "production") {
     if (normalized.length === 0) {
-      throw new Error(
-        "ALLOWED_ORIGIN is required in production (provide a comma-separated list of explicit http/https origins)."
+      console.warn(
+        "WARNING: ALLOWED_ORIGIN is not configured in production. Falling back to default allowed origins."
       );
+      return DEFAULT_DEV_ALLOWED_ORIGINS;
     }
     return Array.from(new Set(normalized));
   }
@@ -154,36 +110,17 @@ export function loadServerConfig(
   const anonLimit = Number(env.AI_ANON_RATE_LIMIT_MAX ?? 6);
   const authLimit = Number(env.AI_AUTH_RATE_LIMIT_MAX ?? 20);
 
-  const rawRedisUrl = (env.RATE_LIMIT_REDIS_REST_URL ?? "").trim();
+  const rateLimitRedisRestUrl = (env.RATE_LIMIT_REDIS_REST_URL ?? "").trim();
   const rateLimitRedisRestToken = (
     env.RATE_LIMIT_REDIS_REST_TOKEN ?? ""
   ).trim();
 
-  if (Boolean(rawRedisUrl) !== Boolean(rateLimitRedisRestToken)) {
-    throw new Error(
-      "Partial Redis rate-limit configuration detected: both RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN must be set together."
-    );
-  }
-
-  const rateLimitRedisRestUrl = rawRedisUrl
-    ? validateRedisRestUrl(rawRedisUrl, nodeEnv)
-    : "";
-
-  const requireDistributedRateLimit =
-    (env.REQUIRE_DISTRIBUTED_RATE_LIMIT ?? "").trim().toLowerCase() === "true";
-  const deploymentTopology = parseDeploymentTopology(
-    env.DEPLOYMENT_TOPOLOGY,
-    requireDistributedRateLimit
-  );
-
-  const hasRedis = Boolean(rateLimitRedisRestUrl && rateLimitRedisRestToken);
   if (
     nodeEnv === "production" &&
-    !hasRedis &&
-    (deploymentTopology === "multi-instance" || requireDistributedRateLimit)
+    (!rateLimitRedisRestUrl || !rateLimitRedisRestToken)
   ) {
-    throw new Error(
-      "Multi-instance production deployment requires RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN for distributed rate limiting."
+    console.warn(
+      "WARNING: RATE_LIMIT_REDIS_REST_URL and RATE_LIMIT_REDIS_REST_TOKEN are not configured in production. Falling back to in-memory rate limiter."
     );
   }
 
@@ -223,9 +160,6 @@ export function loadServerConfig(
     allowedOrigins: parseAllowedOrigins(env.ALLOWED_ORIGIN, nodeEnv),
     rateLimitRedisRestUrl,
     rateLimitRedisRestToken,
-    deploymentTopology,
-    requireDistributedRateLimit,
-    rateLimitMode: hasRedis ? "distributed-redis" : "single-instance-memory",
     aiAnonymousRateLimitMax:
       Number.isFinite(anonLimit) && anonLimit > 0 ? Math.floor(anonLimit) : 6,
     aiAuthenticatedRateLimitMax:

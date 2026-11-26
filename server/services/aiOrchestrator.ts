@@ -142,35 +142,17 @@ function capitalizeProvider(provider: AiProviderName): string {
   return provider === "gemini" ? "Gemini" : "Groq";
 }
 
-const FALLBACK_REASON_MAX = 300;
-
-function buildFallbackReason(
-  primaryProvider: AiProviderName,
-  primaryModel: string,
-  primaryError: string
-): string {
-  const prefix = `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: `;
-  const budget = FALLBACK_REASON_MAX - prefix.length;
-  const detail =
-    primaryError.length > budget
-      ? primaryError.slice(0, Math.max(0, budget - 1)) + "…"
-      : primaryError;
-  return (prefix + detail).slice(0, FALLBACK_REASON_MAX);
-}
-
-interface CommonFallbackParams {
+export async function runGuidanceWithFallback(params: {
   primaryProvider?: AiProviderName;
   fallbackProvider?: AiProviderName | null;
   geminiClient: GeminiClientLike | null;
   geminiModel: string;
   groqApiKey: string;
   groqModel: string;
-}
-
-async function executeWithAiFallback<TResult>(
-  params: CommonFallbackParams,
-  runSingle: (provider: AiProviderName) => Promise<TResult>
-): Promise<{ result: TResult; metadata: AiExecutionMetadata }> {
+  airContext: VerifiedAirContext;
+  household: HouseholdContext;
+  fetchImpl?: typeof fetch;
+}): Promise<AiGuidanceExecution> {
   const {
     primaryProvider = "gemini",
     fallbackProvider = null,
@@ -178,6 +160,153 @@ async function executeWithAiFallback<TResult>(
     geminiModel,
     groqApiKey,
     groqModel,
+    airContext,
+    household,
+    fetchImpl,
+  } = params;
+
+  const primaryConfigured = isProviderConfigured(
+    primaryProvider,
+    geminiClient,
+    groqApiKey
+  );
+  const fallbackConfigured =
+    fallbackProvider !== null &&
+    fallbackProvider !== primaryProvider &&
+    isProviderConfigured(fallbackProvider, geminiClient, groqApiKey);
+
+  if (!primaryConfigured && !fallbackConfigured) {
+    throw new AiOrchestrationError({
+      message: `Primary provider ${capitalizeProvider(primaryProvider)} is unconfigured and no valid fallback provider is enabled.`,
+      status: 503,
+      code:
+        primaryProvider === "gemini"
+          ? "GEMINI_UNCONFIGURED"
+          : "AI_UNCONFIGURED",
+    });
+  }
+
+  const runSingle = async (
+    provider: AiProviderName
+  ): Promise<StructuredGuidance> => {
+    if (provider === "gemini") {
+      if (!geminiClient) {
+        throw new Error("GEMINI_API_KEY missing.");
+      }
+      return generateFamilyGuidance({
+        client: geminiClient,
+        model: geminiModel,
+        airContext,
+        household,
+      });
+    }
+    return generateGroqFamilyGuidance({
+      apiKey: groqApiKey,
+      model: groqModel,
+      airContext,
+      household,
+      fetchImpl,
+    });
+  };
+
+  if (!primaryConfigured) {
+    throw new AiOrchestrationError({
+      message: `Primary provider ${capitalizeProvider(primaryProvider)} is not configured in Settings > Secrets.`,
+      status: 503,
+      code:
+        primaryProvider === "gemini"
+          ? "GEMINI_UNCONFIGURED"
+          : "AI_UNCONFIGURED",
+    });
+  }
+
+  const primaryModel = getProviderModel(
+    primaryProvider,
+    geminiModel,
+    groqModel
+  );
+
+  try {
+    const guidance = await runSingle(primaryProvider);
+    return {
+      guidance,
+      provider: primaryProvider,
+      model: primaryModel,
+      fallbackUsed: false,
+      fallbackReason: null,
+    };
+  } catch (err) {
+    const primaryError = sanitizeProviderError(err);
+
+    if (
+      !fallbackConfigured ||
+      !fallbackProvider ||
+      !isAvailabilityFallbackEligible(primaryError)
+    ) {
+      throw new AiOrchestrationError({
+        message: fallbackProvider
+          ? `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) failed: ${primaryError}`
+          : `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) failed and no fallback provider is enabled: ${primaryError}`,
+        status: classifyProviderFailureStatus(primaryError),
+        code: `${primaryProvider.toUpperCase()}_UPSTREAM_FAILURE`,
+        primaryError,
+      });
+    }
+
+    const secondaryModel = getProviderModel(
+      fallbackProvider,
+      geminiModel,
+      groqModel
+    );
+    try {
+      const guidance = await runSingle(fallbackProvider);
+      return {
+        guidance,
+        provider: fallbackProvider,
+        model: secondaryModel,
+        fallbackUsed: true,
+        fallbackReason: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`,
+      };
+    } catch (secErr) {
+      const secondaryError = sanitizeProviderError(secErr);
+      throw new AiOrchestrationError({
+        message: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) and fallback ${capitalizeProvider(fallbackProvider)} (${secondaryModel}) both failed. Primary: ${primaryError}. Fallback: ${secondaryError}`,
+        status: classifyProviderFailureStatus(
+          `${primaryError} ${secondaryError}`
+        ),
+        code: "AI_UPSTREAM_FAILURE",
+        primaryError,
+        secondaryError,
+      });
+    }
+  }
+}
+
+export async function runAskWithFallback(params: {
+  primaryProvider?: AiProviderName;
+  fallbackProvider?: AiProviderName | null;
+  geminiClient: GeminiClientLike | null;
+  geminiModel: string;
+  groqApiKey: string;
+  groqModel: string;
+  question: string;
+  airContext: VerifiedAirContext;
+  household: HouseholdContext;
+  completedRoutines?: string[];
+  fetchImpl?: typeof fetch;
+}): Promise<AiAnswerExecution> {
+  const {
+    primaryProvider = "gemini",
+    fallbackProvider = null,
+    geminiClient,
+    geminiModel,
+    groqApiKey,
+    groqModel,
+    question,
+    airContext,
+    household,
+    completedRoutines,
+    fetchImpl,
   } = params;
 
   const primaryConfigured = isProviderConfigured(
@@ -212,6 +341,31 @@ async function executeWithAiFallback<TResult>(
     });
   }
 
+  const runSingle = async (provider: AiProviderName): Promise<string> => {
+    if (provider === "gemini") {
+      if (!geminiClient) {
+        throw new Error("GEMINI_API_KEY missing.");
+      }
+      return askFamilyGuardian({
+        client: geminiClient,
+        model: geminiModel,
+        question,
+        airContext,
+        household,
+        completedRoutines,
+      });
+    }
+    return askGroqFamilyGuardian({
+      apiKey: groqApiKey,
+      model: groqModel,
+      question,
+      airContext,
+      household,
+      completedRoutines,
+      fetchImpl,
+    });
+  };
+
   const primaryModel = getProviderModel(
     primaryProvider,
     geminiModel,
@@ -219,15 +373,13 @@ async function executeWithAiFallback<TResult>(
   );
 
   try {
-    const result = await runSingle(primaryProvider);
+    const answer = await runSingle(primaryProvider);
     return {
-      result,
-      metadata: {
-        provider: primaryProvider,
-        model: primaryModel,
-        fallbackUsed: false,
-        fallbackReason: null,
-      },
+      answer,
+      provider: primaryProvider,
+      model: primaryModel,
+      fallbackUsed: false,
+      fallbackReason: null,
     };
   } catch (err) {
     const primaryError = sanitizeProviderError(err);
@@ -253,19 +405,13 @@ async function executeWithAiFallback<TResult>(
       groqModel
     );
     try {
-      const result = await runSingle(fallbackProvider);
+      const answer = await runSingle(fallbackProvider);
       return {
-        result,
-        metadata: {
-          provider: fallbackProvider,
-          model: secondaryModel,
-          fallbackUsed: true,
-          fallbackReason: buildFallbackReason(
-            primaryProvider,
-            primaryModel,
-            primaryError
-          ),
-        },
+        answer,
+        provider: fallbackProvider,
+        model: secondaryModel,
+        fallbackUsed: true,
+        fallbackReason: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`,
       };
     } catch (secErr) {
       const secondaryError = sanitizeProviderError(secErr);
@@ -280,78 +426,4 @@ async function executeWithAiFallback<TResult>(
       });
     }
   }
-}
-
-export async function runGuidanceWithFallback(
-  params: CommonFallbackParams & {
-    airContext: VerifiedAirContext;
-    household: HouseholdContext;
-    fetchImpl?: typeof fetch;
-  }
-): Promise<AiGuidanceExecution> {
-  const { result: guidance, metadata } = await executeWithAiFallback(
-    params,
-    async (provider) => {
-      if (provider === "gemini") {
-        if (!params.geminiClient) {
-          throw new Error("GEMINI_API_KEY missing.");
-        }
-        return generateFamilyGuidance({
-          client: params.geminiClient,
-          model: params.geminiModel,
-          airContext: params.airContext,
-          household: params.household,
-        });
-      }
-      return generateGroqFamilyGuidance({
-        apiKey: params.groqApiKey,
-        model: params.groqModel,
-        airContext: params.airContext,
-        household: params.household,
-        fetchImpl: params.fetchImpl,
-      });
-    }
-  );
-
-  return { guidance, ...metadata };
-}
-
-export async function runAskWithFallback(
-  params: CommonFallbackParams & {
-    question: string;
-    airContext: VerifiedAirContext;
-    household: HouseholdContext;
-    completedRoutines?: string[];
-    fetchImpl?: typeof fetch;
-  }
-): Promise<AiAnswerExecution> {
-  const { result: answer, metadata } = await executeWithAiFallback(
-    params,
-    async (provider) => {
-      if (provider === "gemini") {
-        if (!params.geminiClient) {
-          throw new Error("GEMINI_API_KEY missing.");
-        }
-        return askFamilyGuardian({
-          client: params.geminiClient,
-          model: params.geminiModel,
-          question: params.question,
-          airContext: params.airContext,
-          household: params.household,
-          completedRoutines: params.completedRoutines,
-        });
-      }
-      return askGroqFamilyGuardian({
-        apiKey: params.groqApiKey,
-        model: params.groqModel,
-        question: params.question,
-        airContext: params.airContext,
-        household: params.household,
-        completedRoutines: params.completedRoutines,
-        fetchImpl: params.fetchImpl,
-      });
-    }
-  );
-
-  return { answer, ...metadata };
 }

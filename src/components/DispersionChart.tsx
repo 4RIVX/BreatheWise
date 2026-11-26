@@ -65,19 +65,13 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
   const activePoint = series[activeIdx];
 
   return (
-    <section
-      aria-labelledby="dispersion-chart-heading"
-      className="bg-white border border-slate-200 rounded-xl p-5 space-y-4"
-    >
+    <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2
-            id="dispersion-chart-heading"
-            className="text-base font-semibold text-slate-900"
-          >
-            Hourly Modelled PM2.5 &amp; Boundary Wind ({locationLabel})
-          </h2>
-          <p className="text-xs text-slate-600 mt-0.5">
+          <h3 className="text-base font-semibold text-slate-900">
+            Hourly Modelled PM2.5 & Boundary Wind ({locationLabel})
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
             Open-Meteo regional model · CPCB 24h PM2.5 standard at 60 µg/m³ ·
             WHO 24h guideline at 15 µg/m³
           </p>
@@ -86,18 +80,12 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-4 text-xs font-mono tabular-nums text-slate-700">
             <span>
-              <span
-                aria-hidden="true"
-                className="inline-block w-3 h-0.5 bg-teal-700 align-middle mr-1.5"
-              />
+              <span className="inline-block w-3 h-0.5 bg-teal-700 align-middle mr-1.5" />
               {activePoint.hourLabel} PM2.5:{" "}
               <strong>{activePoint.pm25?.toFixed(1) ?? "—"} µg/m³</strong>
             </span>
             <span>
-              <span
-                aria-hidden="true"
-                className="inline-block w-3 h-0.5 border-t-2 border-dashed border-slate-500 align-middle mr-1.5"
-              />
+              <span className="inline-block w-3 h-0.5 border-t-2 border-dashed border-slate-500 align-middle mr-1.5" />
               Wind:{" "}
               <strong>{activePoint.windKmh?.toFixed(1) ?? "—"} km/h</strong>
             </span>
@@ -110,24 +98,22 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
           >
             <button
               type="button"
-              aria-pressed={viewMode === "chart"}
               onClick={() => setViewMode("chart")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                 viewMode === "chart"
                   ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-700 hover:text-slate-900"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Chart
             </button>
             <button
               type="button"
-              aria-pressed={viewMode === "table"}
               onClick={() => setViewMode("table")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                 viewMode === "table"
                   ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-700 hover:text-slate-900"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Data Table
@@ -142,20 +128,9 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
             viewBox={`0 0 ${width} ${height}`}
             className="w-full h-auto overflow-visible cursor-crosshair select-none"
             role="img"
-            aria-labelledby="dispersion-chart-svg-title dispersion-chart-svg-desc"
+            aria-label={`Hourly modelled PM2.5 and wind speed chart for ${locationLabel}`}
             onMouseLeave={() => setHoveredIdx(null)}
           >
-            <title id="dispersion-chart-svg-title">
-              Hourly modelled PM2.5 and wind speed chart for {locationLabel}
-            </title>
-            <desc id="dispersion-chart-svg-desc">
-              {series.length} hourly intervals. Latest point at{" "}
-              {activePoint.hourLabel} shows PM2.5 of{" "}
-              {activePoint.pm25?.toFixed(1) ?? "unavailable"} micrograms per
-              cubic meter and wind speed of{" "}
-              {activePoint.windKmh?.toFixed(1) ?? "unavailable"} kilometers per
-              hour. Switch to the Data Table view for full tabular values.
-            </desc>
             <defs>
               <linearGradient id="pmFill" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="#0f766e" stopOpacity="0.18" />
@@ -180,7 +155,7 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
                     x={padLeft - 8}
                     y={y + 3}
                     textAnchor="end"
-                    className="fill-slate-600 text-[10px] font-mono tabular-nums"
+                    className="fill-slate-500 text-[10px] font-mono tabular-nums"
                   >
                     {val}
                   </text>
@@ -250,7 +225,7 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
                       x={cx}
                       y={height - 10}
                       textAnchor="middle"
-                      className="fill-slate-600 text-[10px] font-mono tabular-nums"
+                      className="fill-slate-500 text-[10px] font-mono tabular-nums"
                     >
                       {p.hourLabel}
                     </text>
@@ -266,7 +241,7 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
                     cx={cx}
                     cy={cyWind}
                     r={isActive ? 3.5 : 2}
-                    className="fill-slate-600"
+                    className="fill-slate-500"
                   />
 
                   <rect
@@ -284,14 +259,14 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
             <text
               x={width - padRight + 8}
               y={padTop + 6}
-              className="fill-slate-600 text-[10px] font-mono"
+              className="fill-slate-500 text-[10px] font-mono"
             >
               {Math.round(maxWind)} km/h
             </text>
             <text
               x={width - padRight + 8}
               y={padTop + plotH}
-              className="fill-slate-600 text-[10px] font-mono"
+              className="fill-slate-500 text-[10px] font-mono"
             >
               0
             </text>
@@ -349,6 +324,6 @@ export const DispersionChart: React.FC<DispersionChartProps> = ({
           </table>
         </div>
       )}
-    </section>
+    </div>
   );
 };

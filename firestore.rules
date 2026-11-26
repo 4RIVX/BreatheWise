@@ -208,10 +208,7 @@ service cloud.firestore {
       // User Low-Emission Routines subcollection
       match /routines/{routineId} {
         allow get: if isValidId(userId) && isValidId(routineId) && isOwner(userId);
-        allow list: if isValidId(userId)
-          && isOwner(userId)
-          && resource.data.uid == request.auth.uid
-          && request.query.limit <= 50;
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.uid == request.auth.uid;
         allow create: if isValidId(userId)
           && isValidId(routineId)
           && isOwner(userId)
@@ -236,10 +233,7 @@ service cloud.firestore {
       // User Eco Trip Logs subcollection
       match /ecoLogs/{logId} {
         allow get: if isValidId(userId) && isValidId(logId) && isOwner(userId);
-        allow list: if isValidId(userId)
-          && isOwner(userId)
-          && resource.data.uid == request.auth.uid
-          && request.query.limit <= 20;
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.uid == request.auth.uid;
         allow create: if isValidId(userId)
           && isValidId(logId)
           && isOwner(userId)
@@ -254,8 +248,7 @@ service cloud.firestore {
     // Community Smog Watch Reports (publicly readable without authorUid or PII; ownership isolated)
     match /smogReports/{reportId} {
       allow get: if isValidId(reportId) && existing().moderationStatus != 'FLAGGED';
-      allow list: if resource.data.moderationStatus in ['UNVERIFIED', 'REVIEWED']
-        && request.query.limit <= 50;
+      allow list: if resource.data.moderationStatus in ['UNVERIFIED', 'REVIEWED'];
 
       allow create: if isValidId(reportId)
         && isVerifiedUser()

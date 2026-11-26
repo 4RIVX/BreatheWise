@@ -3,7 +3,6 @@ node_modules/
 
 # Build & cache outputs
 dist/
-dist-server/
 .vite/
 *.tsbuildinfo
 coverage/
@@ -24,16 +23,8 @@ firebase-export-*
 firebase-debug*.log
 firestore-debug*.log
 
-# Never commit AI Studio / cloud log exports
-public/assets/aistudio/
-
-# JetBrains IDE
-.idea/
-
 # Verification & OS artifacts
 .playwright-cli/
-playwright-report/
-test-results/
 .DS_Store
 Thumbs.db
 package-lock.json

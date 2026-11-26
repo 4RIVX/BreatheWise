@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Search, ThumbsUp } from "lucide-react";
 import type { FirestoreSmogReport } from "../firebase/firestoreService";
-import { SmogCategorySchema, type SmogSourceCategory } from "../domain/schemas";
+import type { SmogSourceCategory } from "../domain/schemas";
 import type { TranslationBundle } from "../domain/i18n";
 
 interface CommunitySmogWatchProps {
@@ -55,7 +55,6 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
   >("All");
   const [onlyActiveCity, setOnlyActiveCity] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
 
   const filteredReports = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -93,12 +92,8 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
 
   const handleConfirm = async (rep: FirestoreSmogReport) => {
     setConfirmError(null);
-    setConfirmStatus(null);
     try {
       await onConfirmReport(rep);
-      setConfirmStatus(
-        `Confirmed smog observation at ${rep.approximateLocation}.`
-      );
     } catch (err) {
       setConfirmError(
         err instanceof Error ? err.message : "Could not confirm sighting."
@@ -116,7 +111,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
           <h2 className="text-xl font-semibold text-slate-900">
             {t.sections.smogWatchTitle}
           </h2>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-slate-500 mt-1">
             {t.disclaimers.unverifiedReports}
           </p>
         </div>
@@ -124,7 +119,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
         <button
           type="button"
           onClick={onOpenReportModal}
-          className="px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+          className="px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           {t.actions.reportSmog}
         </button>
@@ -135,26 +130,18 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
           {confirmError}
         </p>
       )}
-      {confirmStatus && (
-        <p role="status" className="text-xs text-teal-800 font-medium">
-          {confirmStatus}
-        </p>
-      )}
 
       <div className="py-2 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-64">
-            <Search
-              aria-hidden="true"
-              className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search city, area, or notes..."
               aria-label="Search community smog reports"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
+              className="pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-teal-700 w-64"
             />
           </div>
 
@@ -167,12 +154,11 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
               <button
                 key={sev}
                 type="button"
-                aria-pressed={severityFilter === sev}
                 onClick={() => setSeverityFilter(sev)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                   severityFilter === sev
                     ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-700 hover:text-slate-900"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {sev}
@@ -183,16 +169,10 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
           <select
             aria-label="Filter reports by pollution category"
             value={categoryFilter}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val === "All") {
-                setCategoryFilter("All");
-                return;
-              }
-              const parsed = SmogCategorySchema.safeParse(val);
-              if (parsed.success) setCategoryFilter(parsed.data);
-            }}
-            className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:border-teal-700"
+            onChange={(e) =>
+              setCategoryFilter(e.target.value as "All" | SmogSourceCategory)
+            }
+            className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-teal-700"
           >
             {CATEGORY_FILTERS.map((cat) => (
               <option key={cat} value={cat}>
@@ -204,12 +184,11 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
 
         <button
           type="button"
-          aria-pressed={onlyActiveCity}
           onClick={() => setOnlyActiveCity((prev) => !prev)}
-          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             onlyActiveCity
               ? "bg-teal-50 border-teal-300 text-teal-900"
-              : "bg-white border-slate-200 text-slate-700 hover:text-slate-900"
+              : "bg-white border-slate-200 text-slate-600 hover:text-slate-900"
           }`}
         >
           {onlyActiveCity ? `Showing: ${activeCity}` : "All Cities"}
@@ -221,7 +200,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
           <p className="text-sm font-medium text-slate-800">
             No community observations match your current filters.
           </p>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-slate-500">
             Citizen observations stored in Firestore appear here once submitted.
           </p>
         </div>
@@ -239,7 +218,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
                     <h3 className="text-sm font-semibold text-slate-900">
                       {rep.approximateLocation}
                     </h3>
-                    <span aria-hidden="true" className="text-slate-400">
+                    <span aria-hidden="true" className="text-slate-300">
                       ·
                     </span>
                     <span
@@ -247,7 +226,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
                     >
                       {rep.severity} Severity
                     </span>
-                    <span aria-hidden="true" className="text-slate-400">
+                    <span aria-hidden="true" className="text-slate-300">
                       ·
                     </span>
                     <span className="text-xs font-mono font-semibold text-amber-800">
@@ -270,7 +249,7 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span>
                       {rep.city}, {rep.state}
                     </span>
@@ -289,19 +268,9 @@ export const CommunitySmogWatch: React.FC<CommunitySmogWatchProps> = ({
                   type="button"
                   disabled={!isSignedIn || alreadyConfirmed}
                   onClick={() => handleConfirm(rep)}
-                  aria-label={
-                    alreadyConfirmed
-                      ? `Confirmed sighting at ${rep.approximateLocation} (${rep.confirmationsCount} confirmations)`
-                      : isSignedIn
-                        ? `Confirm sighting at ${rep.approximateLocation} (${rep.confirmationsCount} confirmations)`
-                        : `Sign in to confirm sighting at ${rep.approximateLocation} (${rep.confirmationsCount} confirmations)`
-                  }
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 disabled:opacity-60 border border-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 self-start cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 disabled:opacity-60 border border-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 self-start cursor-pointer"
                 >
-                  <ThumbsUp
-                    aria-hidden="true"
-                    className="w-3.5 h-3.5 text-teal-700"
-                  />
+                  <ThumbsUp className="w-3.5 h-3.5 text-teal-700" />
                   <span>
                     {alreadyConfirmed
                       ? "Confirmed"
