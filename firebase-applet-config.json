@@ -1,12 +1,12 @@
 {
-  "projectId": "data-blend-vc62s",
-  "appId": "1:586843551515:web:174f3cc39ee423a44705be",
-  "apiKey": "AIzaSyA3sqNSKWYvAYorqSFoq9xlXZ6_GiGyljo",
-  "authDomain": "data-blend-vc62s.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-breathewise-0d124cc1-42ec-406c-8f70-0818ae6bbdeb",
-  "storageBucket": "data-blend-vc62s.firebasestorage.app",
-  "messagingSenderId": "586843551515",
+  "projectId": "",
+  "appId": "",
+  "apiKey": "",
+  "authDomain": "",
+  "firestoreDatabaseId": "",
+  "storageBucket": "",
+  "messagingSenderId": "",
   "measurementId": "",
-  "oAuthClientId": "586843551515-antufb08bpa75gnatui6fm7irbsd704p.apps.googleusercontent.com",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
