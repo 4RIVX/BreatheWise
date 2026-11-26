@@ -23,6 +23,9 @@ firebase-export-*
 firebase-debug*.log
 firestore-debug*.log
 
+# Never commit AI Studio / cloud log exports
+public/assets/aistudio/
+
 # Verification & OS artifacts
 .playwright-cli/
 .DS_Store

@@ -1461,9 +1461,11 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     );
     expect(fs.existsSync(path.resolve(process.cwd(), ".gitignore"))).toBe(true);
     expect(pkg.dependencies.sharp).toBe("^0.35.5");
-    expect(pkg.dependencies.typescript).toBe("^5.9.3");
+    expect(pkg.devDependencies.typescript).toBe("^5.9.3");
+    expect(pkg.overrides["@grpc/grpc-js"]).toBe("1.14.7");
     expect(bunLock).toContain('"sharp": "^0.35.5"');
     expect(bunLock).toContain('"typescript": "^5.9.3"');
+    expect(bunLock).toContain('"@grpc/grpc-js": "1.14.7"');
     expect(bunLock).toContain('"sharp@0.35.');
     expect(bunLock).toContain('"typescript@5.9.3"');
   });

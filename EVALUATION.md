@@ -15,7 +15,7 @@
 
 ### 1. Code Quality
 - **Architecture**: Clean separation of concerns across domain rules (`src/domain/`), Zod local-storage and Firebase sync hooks (`src/hooks/`), server providers (`server/providers/`), modular Express routers (`server/routes/`), AI orchestration (`server/services/`), and React UI components (`src/components/`).
-- **TypeScript**: Strict typing (`tsc --noEmit`) with Zod schema validation on inputs, persisted local state, `firebase-applet-config.json`, provider error payloads, and API responses. Maintained Prettier (`format:check`) and ESLint (`eslint.config.mjs`) cover `src/**/*.{ts,tsx}`, `tests/**/*.{ts,tsx}`, `server.ts`, `server/**/*.ts`, `firestore.rules`, and build/test configs.
+- **TypeScript**: Strict typing (`tsc --noEmit`) with Zod schema validation on inputs, persisted local state, `firebase-applet-config.json`, provider error payloads, and API responses. Prettier and ESLint are configured for application, test, server, and build/test files; the current `format:check` reports formatting drift in 73 files.
 - **Maintainability**: `useWorkspaceSync` is cleanly decomposed into focused household, routine, smog-report, and eco-log hooks with UID-scoped state cleanup on sign-out, single-flight routine seeding, and mount/cancellation guards.
 
 ### 2. Security
@@ -23,14 +23,14 @@
 - **CORS & Rate Limiting**: Strict origin allowlist (wildcards prohibited, and production startup fails fast when `ALLOWED_ORIGIN` is empty rather than falling back to localhost dev origins). Distributed Redis REST rate limiting rejects partial credentials and non-HTTPS URLs, enforces mandatory Redis when `DEPLOYMENT_TOPOLOGY=multi-instance` or `REQUIRE_DISTRIBUTED_RATE_LIMIT=true` in production, and fails closed (`503`) on Redis outage (with explicit warning that `single-instance` relies on single-instance deployment limits unless Redis is enabled).
 - **Image Sanitization**: Binary decoding and re-encoding via `sharp@0.35.5` strips all EXIF/GPS metadata from user-uploaded smog photos.
 - **Firestore Rules**: Hardened Eight Pillars security rules enforcing payload validation, PII isolation (`authorUid` in private subcollection), and atomic confirmation tracking.
-- **Transitive Dependency Audit (`bun audit`)**: Reports 2 advisories solely on `@grpc/grpc-js@1.9.16` pinned strictly by upstream `firebase@13.4.0 -> @firebase/firestore@4.20.0` (`"~1.9.0"`); `firebase-admin@14.5.1 -> google-gax` already resolves `@grpc/grpc-js@1.14.7`, browser clients use Web/WebChannel rather than Node gRPC, and server Admin SDK calls `getAuth().verifyIdToken()` over HTTPS.
+- **Transitive Dependency Audit (`bun audit`)**: Root override pins `@grpc/grpc-js` to `1.14.7` across the dependency tree; `bun audit` reports `0` vulnerabilities across `618` packages.
 
 ### 3. Efficiency
-- **Caching & Pagination**: TTL caching on CPCB (`15 min`) and Open-Meteo (`30 min`) endpoints prevents rate limits and redundant network overhead. Bounded pagination (`offset < 2500`) handles large upstream station payloads cleanly.
+- **Caching & Pagination**: TTL caching on CPCB and Open-Meteo (`15 min` each) prevents rate limits and redundant network overhead. Bounded pagination (`offset < 2500`) handles large upstream station payloads cleanly.
 - **Bundle & Memory**: Optimized production bundle (`5.3 MB` non-dependency workspace footprint excluding `node_modules` and `dist`, well below `10 MB`) with memoized client calculations and asynchronous request pipelining.
 
 ### 4. Testing
-- **Test Coverage**: 89 automated unit, integration, and UI tests across 9 test files (`bun run test`), Node pure-logic tests (`npx tsx --test`), and V8 coverage via `@vitest/coverage-v8` (`bun run test:coverage`: `71.25%` Statements, `62.65%` Branches, `67.02%` Functions, `73.07%` Lines overall; `89.24%` Stmts / `100%` Functions across `src/domain/`).
+- **Test Coverage**: 91 automated unit, integration, and UI tests across 9 test files (`bun run test`), Node pure-logic tests (`bun x tsx --test`), and the latest recorded V8 coverage via `@vitest/coverage-v8` (`71.25%` Statements, `62.65%` Branches, `67.02%` Functions, `73.07%` Lines overall; `89.24%` Stmts / `100%` Functions across `src/domain/`).
 - **Regression Suite**: Covers security boundary enforcement, rate-limit topology validation, workspace sync offline/sign-out/race guards, OpenAQ mixed-freshness validation, Indian national AQI rolling averages, eco-mobility emission accounting, indoor air safety logic, and UI modal focus/ARIA contracts.
 
 ### 5. Accessibility
@@ -47,11 +47,11 @@
 
 | Verification Item | Status | Observed Result |
 |---|---|---|
-| `bun run format:check` | `VERIFIED` | Exit 0 across `src/**/*.{ts,tsx}`, `tests/**/*.{ts,tsx}`, `server.ts`, `server/**/*.ts`, `vite.config.ts`, `vitest.config.ts`, `eslint.config.mjs`. |
+| `bun run format:check` | `FAILED` | Prettier reports formatting drift in 73 files; no repository-wide formatting rewrite was applied. |
 | `bun run lint` (`tsc --noEmit && eslint .`) | `VERIFIED` | Exit 0 (`0` TypeScript, ESLint, and `firestore.rules` errors). |
-| `bun run test` & `bun run test:coverage` | `VERIFIED` | 9 files, `89/89` tests passed; V8 coverage `71.25%` Stmts / `62.65%` Branch / `67.02%` Funcs / `73.07%` Lines (`89.24%` Stmts in `src/domain/`). |
-| `npx --yes tsx --test src/domain/pureLogic.node-test.ts` | `VERIFIED` | `2/2` subtests passed. |
-| `bun run build` | `VERIFIED` | Clean production Vite bundle build. |
-| `bun audit` | `VERIFIED` | `0` Sharp vulnerabilities; `2` upstream transitive `@grpc/grpc-js` advisories on `firebase -> @firebase/firestore` (`google-gax` already at `1.14.7`). |
+| `bun run test` & `bun run test:coverage` | `PARTIALLY VERIFIED` | 9 files, `91/91` tests passed; coverage was not rerun after two new integration tests, so the latest recorded V8 figures remain `71.25%` Stmts / `62.65%` Branch / `67.02%` Funcs / `73.07%` Lines (`89.24%` Stmts in `src/domain/`). |
+| `bun x tsx --test src/domain/pureLogic.node-test.ts` | `VERIFIED` | `2/2` subtests passed. |
+| `bun run build` | `VERIFIED` | Production build succeeded; Vite reports the main JavaScript chunk exceeds its 500 kB advisory threshold. |
+| `bun audit` | `VERIFIED` | `0` vulnerabilities across `618` packages after pinning `@grpc/grpc-js` to `1.14.7`. |
 | Live Browser + `axe-core` (`http://localhost:3000`) | `VERIFIED` | `0` console errors, `0` `axe-core` WCAG A/AA violations at `1440x900` & `390x844`, `<html lang="ta">` toggle verified, modal `inert` + focus trap + focus restoration verified, `0` overflow at `1440px`/`720px`/`390px`. Upstream CPCB (`ECONNREFUSED`) and live OpenAQ (`OPENAQ_API_KEY` unset) unavailable in container. |
 | Firebase Emulator Suite | `NOT RUN` | Local Firebase Emulator binary unavailable in container; Firestore rules checked via `@firebase/eslint-plugin-security-rules` and rule-invariant unit tests. |

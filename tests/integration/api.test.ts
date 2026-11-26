@@ -282,6 +282,46 @@ describe("Express API Integration & Security Tests", () => {
     expect(JSON.stringify(res.body)).not.toContain("secret-k");
   });
 
+  it("enables the production CSP and disables it outside production", async () => {
+    const productionApp = createApp({
+      config: { ...BASE_CONFIG, nodeEnv: "production" },
+      enableRateLimit: false,
+    });
+    const productionResponse = await request(productionApp).get("/api/health");
+    const productionCsp = productionResponse.headers["content-security-policy"];
+
+    expect(productionCsp).toContain("default-src 'self'");
+    expect(productionCsp).toContain("style-src 'self' 'unsafe-inline'");
+    expect(productionCsp).toContain("frame-ancestors 'self'");
+
+    const developmentApp = createApp({
+      config: { ...BASE_CONFIG, nodeEnv: "development" },
+      enableRateLimit: false,
+    });
+    const developmentResponse = await request(developmentApp).get(
+      "/api/health"
+    );
+
+    expect(
+      developmentResponse.headers["content-security-policy"]
+    ).toBeUndefined();
+  });
+
+  it("returns a safe 500 response when async middleware rejects with a non-Error value", async () => {
+    const app = createApp({
+      config: { ...BASE_CONFIG, geminiApiKey: "test-key" },
+      verifyTokenFn: () => Promise.reject("unexpected middleware rejection"),
+      enableRateLimit: false,
+    });
+
+    const response = await request(app)
+      .post("/api/gemini/guidance")
+      .send({});
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: "Internal server error." });
+  });
+
   it("validates ServerConfig strictly against invalid providers, wildcards, missing production origins, and missing production Redis", () => {
     expect(() => loadServerConfig({ AI_PROVIDER: "unknown-llm" })).toThrow(
       /Invalid AI_PROVIDER/i

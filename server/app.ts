@@ -83,7 +83,35 @@ export function createApp(deps: AppDependencies = {}) {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy:
+        config.nodeEnv === "production"
+          ? {
+              useDefaults: true,
+              directives: {
+                "default-src": ["'self'"],
+                "script-src": ["'self'"],
+                "style-src": [
+                  "'self'",
+                  "'unsafe-inline'",
+                  "https://fonts.googleapis.com",
+                ],
+                "font-src": ["'self'", "https://fonts.gstatic.com"],
+                "img-src": ["'self'", "data:"],
+                "connect-src": [
+                  "'self'",
+                  "https://*.googleapis.com",
+                  "https://*.firebaseapp.com",
+                ],
+                "frame-src": [
+                  "https://*.firebaseapp.com",
+                  "https://accounts.google.com",
+                ],
+                "object-src": ["'none'"],
+                "base-uri": ["'self'"],
+                "frame-ancestors": ["'self'"],
+              },
+            }
+          : false,
       crossOriginEmbedderPolicy: false,
     })
   );
@@ -231,6 +259,10 @@ export function createApp(deps: AppDependencies = {}) {
       res: Response,
       _next: NextFunction
     ) => {
+      const errorDetails =
+        err && typeof err === "object" ? (err as ExpressHttpError) : undefined;
+      const message = err instanceof Error ? err.message : String(err ?? "");
+
       if (err instanceof DistributedRateLimitUnavailableError) {
         res.status(503).json({
           error: "Rate-limit enforcement temporarily unavailable.",
@@ -238,21 +270,21 @@ export function createApp(deps: AppDependencies = {}) {
         });
         return;
       }
-      if (err.message.includes("CORS")) {
+      if (message.includes("CORS")) {
         res.status(403).json({ error: "Origin not permitted." });
         return;
       }
       if (
-        err.type === "entity.too.large" ||
-        err.message.includes("entity too large")
+        errorDetails?.type === "entity.too.large" ||
+        message.includes("entity too large")
       ) {
         res.status(413).json({ error: "Request payload exceeds size limit." });
         return;
       }
       if (
         err instanceof SyntaxError ||
-        err.type === "entity.parse.failed" ||
-        err.status === 400
+        errorDetails?.type === "entity.parse.failed" ||
+        errorDetails?.status === 400
       ) {
         res.status(400).json({ error: "Malformed JSON request body." });
         return;

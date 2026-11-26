@@ -142,6 +142,22 @@ function capitalizeProvider(provider: AiProviderName): string {
   return provider === "gemini" ? "Gemini" : "Groq";
 }
 
+const FALLBACK_REASON_MAX = 300;
+
+function buildFallbackReason(
+  primaryProvider: AiProviderName,
+  primaryModel: string,
+  primaryError: string
+): string {
+  const prefix = `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: `;
+  const budget = FALLBACK_REASON_MAX - prefix.length;
+  const detail =
+    primaryError.length > budget
+      ? primaryError.slice(0, Math.max(0, budget - 1)) + "…"
+      : primaryError;
+  return (prefix + detail).slice(0, FALLBACK_REASON_MAX);
+}
+
 interface CommonFallbackParams {
   primaryProvider?: AiProviderName;
   fallbackProvider?: AiProviderName | null;
@@ -244,7 +260,11 @@ async function executeWithAiFallback<TResult>(
           provider: fallbackProvider,
           model: secondaryModel,
           fallbackUsed: true,
-          fallbackReason: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`,
+          fallbackReason: buildFallbackReason(
+            primaryProvider,
+            primaryModel,
+            primaryError
+          ),
         },
       };
     } catch (secErr) {

@@ -22,10 +22,10 @@ BreatheWise is an India-first environmental intelligence and household air-pollu
    - Transparent room-volume, CADR (m³/h ↔ CFM), and effective Air Changes per Hour (ACH) calculator with visible formulas and explicit scope disclaimer (does not measure actual indoor PM2.5).
 
 5. **Smart Mobility & Eco Impact Tracker + Low-Emission Routines (`src/domain/ecoImpact.ts`, `src/components/EcoMobilityTracker.tsx`, `src/components/LowEmissionRoutines.tsx`)**
-   - Versioned India-specific transport emission factors (India GHG Program / WRI India, CEA Grid Baseline v22.0, DMRC, IPCC) displaying sources, units, publication years, and limitations alongside daily clean-air routine tracking persisted to Firestore.
+   - Versioned India-specific transport emission factors (India GHG Program / WRI India, CEA Grid Baseline v22.0, IPCC) displaying sources, units, publication years, and limitations alongside daily clean-air routine tracking persisted to Firestore. The metro-rail electricity factor is an illustrative CEA-based estimate, not a DMRC-published factor.
 
 6. **Community Smog Watch (`src/components/CommunitySmogWatch.tsx`, `src/components/ReportSmogModal.tsx`, `server/utils/imageSanitizer.ts`)**
-   - Firestore-backed anonymous citizen smog observations explicitly marked `UNVERIFIED CITIZEN REPORT`, atomic single-user confirmation (`writeBatch` + `/confirmations/{uid}`), and server-side binary signature verification + EXIF/GPS metadata stripping for optional JPEG, PNG, and WebP photos.
+   - Firestore-backed anonymous citizen smog observations explicitly marked `UNVERIFIED CITIZEN REPORT`; initial report data is atomically created with `writeBatch`, while subsequent single-user confirmations use `runTransaction` and `/confirmations/{uid}`. Optional JPEG, PNG, and WebP photos receive server-side binary signature verification and EXIF/GPS metadata stripping.
 
 ## Setup & Local Development
 
@@ -33,24 +33,25 @@ BreatheWise is an India-first environmental intelligence and household air-pollu
    - `GEMINI_API_KEY` (server-side secret for AI Family Guardian)
    - `GEMINI_MODEL=gemini-4-hydrogen`
    - `DATA_GOV_IN_API_KEY` (data.gov.in API key for live CPCB station telemetry)
+   - `OPENAQ_API_KEY` (OpenAQ v3 API key for verified hourly station measurements)
 2. Install dependencies:
    ```bash
-   npm install
+   bun install
    ```
 3. Run development server (Express + Vite middleware on port 3000):
    ```bash
-   npm run dev
+   bun run dev
    ```
 4. Build and run production server (Cloud Run target):
    ```bash
-   npm run build
-   npm start
+   bun run build
+   bun run start
    ```
 
 ## Quality & Verification Commands
 
-- Unit, integration, UI & accessibility tests: `npm run test`
-- Code coverage report (`@vitest/coverage-v8`): `npm run test:coverage`
-- Pure-logic `node:test` check: `npx tsx --test src/domain/pureLogic.node-test.ts`
-- TypeScript & ESLint (including `firestore.rules`): `npm run lint`
-- Formatting check: `npm run format:check`
+- Unit, integration, UI & accessibility tests: `bun run test`
+- Code coverage report (`@vitest/coverage-v8`): `bun run test:coverage`
+- Pure-logic `node:test` check: `bun x tsx --test src/domain/pureLogic.node-test.ts`
+- TypeScript & ESLint (including `firestore.rules`): `bun run lint`
+- Formatting check: `bun run format:check`
