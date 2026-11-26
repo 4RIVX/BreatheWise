@@ -346,6 +346,16 @@ describe("Express API Integration & Security Tests", () => {
     expect(allowedOriginRes.headers["access-control-allow-origin"]).toBe(
       "https://authorized.breathewise.example"
     );
+    expect(allowedOriginRes.headers["x-frame-options"]).toBeUndefined();
+
+    const sameOriginPreviewRes = await request(app)
+      .get("/api/health")
+      .set("Host", "ais-dev-preview.asia-northeast1.run.app")
+      .set("Origin", "https://ais-dev-preview.asia-northeast1.run.app");
+    expect(sameOriginPreviewRes.status).toBe(200);
+    expect(sameOriginPreviewRes.headers["access-control-allow-origin"]).toBe(
+      "https://ais-dev-preview.asia-northeast1.run.app"
+    );
   });
 
   it("GET /api/air-quality separates CPCB measured stations from Open-Meteo modelled forecasts", async () => {

@@ -85,10 +85,13 @@ export function createApp(deps: AppDependencies = {}) {
     helmet({
       contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
+      frameguard: false,
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+      crossOriginResourcePolicy: { policy: "cross-origin" },
     })
   );
 
-  app.use(
+  app.use((req, res, next) => {
     cors({
       origin(origin, callback) {
         // Same-origin / server-to-server requests without an Origin header
@@ -100,13 +103,28 @@ export function createApp(deps: AppDependencies = {}) {
           callback(null, true);
           return;
         }
+        // Allow exact same-origin browser requests (e.g. POST from AI Studio preview or Cloud Run host)
+        try {
+          const parsedOrigin = new URL(origin);
+          const forwardedHost = req
+            .get("x-forwarded-host")
+            ?.split(",")[0]
+            ?.trim();
+          const reqHost = forwardedHost || req.get("host")?.trim();
+          if (reqHost && parsedOrigin.host === reqHost) {
+            callback(null, true);
+            return;
+          }
+        } catch {
+          // Malformed Origin header falls through to rejection
+        }
         callback(new Error("Origin not permitted by CORS policy"));
       },
       credentials: false,
       methods: ["GET", "POST"],
       allowedHeaders: ["Content-Type", "Authorization"],
-    })
-  );
+    })(req, res, next);
+  });
 
   app.use("/api/uploads/smog-photo", express.json({ limit: "3mb" }));
   app.use(express.json({ limit: "256kb" }));
