@@ -6,7 +6,17 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
 let environment: RulesTestEnvironment;
 
@@ -92,5 +102,64 @@ describe("Firestore rules adversarial invariants", () => {
       });
     });
     await assertSucceeds(getDoc(doc(authenticatedDb("u1"), "users/u1")));
+  });
+
+  it("caps public smog report list queries at 50 records", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "smogReports/list-limit-report"), {
+        moderationStatus: "UNVERIFIED",
+      });
+    });
+
+    const reports = collection(
+      environment.unauthenticatedContext().firestore(),
+      "smogReports"
+    );
+    const visibleReports = where("moderationStatus", "in", [
+      "UNVERIFIED",
+      "REVIEWED",
+    ]);
+
+    await assertFails(getDocs(query(reports, visibleReports)));
+    await assertSucceeds(getDocs(query(reports, visibleReports, limit(50))));
+    await assertFails(getDocs(query(reports, visibleReports, limit(51))));
+  });
+
+  it("caps owner routine list queries at 50 records", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "users/list-limit-owner/routines/routine-1"),
+        { uid: "list-limit-owner" }
+      );
+    });
+
+    const routines = collection(
+      authenticatedDb("list-limit-owner"),
+      "users/list-limit-owner/routines"
+    );
+    const ownerRoutine = where("uid", "==", "list-limit-owner");
+
+    await assertFails(getDocs(query(routines, ownerRoutine)));
+    await assertSucceeds(getDocs(query(routines, ownerRoutine, limit(50))));
+    await assertFails(getDocs(query(routines, ownerRoutine, limit(51))));
+  });
+
+  it("caps owner eco log list queries at 20 records", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "users/list-limit-owner/ecoLogs/log-1"),
+        { uid: "list-limit-owner" }
+      );
+    });
+
+    const ecoLogs = collection(
+      authenticatedDb("list-limit-owner"),
+      "users/list-limit-owner/ecoLogs"
+    );
+    const ownerLog = where("uid", "==", "list-limit-owner");
+
+    await assertFails(getDocs(query(ecoLogs, ownerLog)));
+    await assertSucceeds(getDocs(query(ecoLogs, ownerLog, limit(20))));
+    await assertFails(getDocs(query(ecoLogs, ownerLog, limit(21))));
   });
 });

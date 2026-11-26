@@ -2,7 +2,7 @@
 
 **Understand Your Air. Protect Your People. Breathe Better.**
 
-BreatheWise is an India-first environmental intelligence and household air-pollution protection platform built with React 19, TypeScript, Express (Node.js 22), Google Gemini (`@google/genai`), Firebase Authentication, and Cloud Firestore.
+BreatheWise is an India-first environmental intelligence and household air-pollution protection platform built with React 19, TypeScript, Express (Node.js `>=22.19.0`), Google Gemini (`@google/genai`), and optional Firebase Authentication and Cloud Firestore integrations.
 
 ## Architecture & Core Modules
 
@@ -38,6 +38,7 @@ BreatheWise is an India-first environmental intelligence and household air-pollu
    ```bash
    bun install
    ```
+   Node.js `>=22.19.0` is required; `.nvmrc` and `.node-version` pin the major version. Bun is the package manager and `bun.lock` is the committed lockfile.
 3. Run development server (Express + Vite middleware on port 3000):
    ```bash
    bun run dev
@@ -47,12 +48,22 @@ BreatheWise is an India-first environmental intelligence and household air-pollu
    bun run build
    bun run start
    ```
+   The build compiles the Express entry point to `dist-server/server.mjs`; production starts with Node.js, without `tsx`.
+
+## Firebase Configuration & API Key Safety
+
+- The checked-in `firebase-applet-config.json` is intentionally blank, so Firebase sign-in, cloud routines, eco logs, and community writes remain disabled unless a Firebase project is configured through the supported `VITE_FIREBASE_*` settings.
+- A Firebase web API key is a public client identifier, not a server secret. If Firebase is enabled, restrict that key to the deployed web origins and only the Firebase APIs the application uses in Google Cloud Console; never place Gemini, OpenAQ, or data.gov.in credentials in client-side configuration.
+- `GEMINI_API_KEY`, `OPENAQ_API_KEY`, and `DATA_GOV_IN_API_KEY` are server-side environment secrets.
 
 ## Quality & Verification Commands
 
 - Unit, integration, UI & accessibility tests: `bun run test`
-- Firestore security rules emulator tests: `bun run test:rules`
+- Browser WCAG and responsive-layout tests: `bun run test:e2e` (install Chromium first with `bunx playwright install chromium`)
+- Firestore security rules emulator tests: `bun run test:rules` (requires Java 21)
 - Code coverage report (`@vitest/coverage-v8`): `bun run test:coverage`
-- Pure-logic `node:test` check: `bun x tsx --test src/domain/pureLogic.node-test.ts`
-- TypeScript & ESLint (including `firestore.rules`): `bun run lint`
+- All suites: `bun run test:all`
+- Pure-logic `node:test` check: `bun run test:pure`
+- TypeScript: `bun run typecheck`
+- ESLint (including `firestore.rules`): `bun run lint`
 - Formatting check: `bun run format:check`

@@ -15,6 +15,7 @@ export default defineConfig({
           if (/\/node_modules\/(firebase|@firebase)(\/|$)/.test(id)) {
             return "firebase";
           }
+          return undefined;
         },
       },
     },

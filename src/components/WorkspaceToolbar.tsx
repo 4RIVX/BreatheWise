@@ -39,7 +39,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
           type="button"
           onClick={onRequestBrowserLocation}
           disabled={locationRequestPending}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+          className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
         >
           <MapPin aria-hidden="true" className="w-3.5 h-3.5 text-teal-700" />
           {locationRequestPending ? "Locating..." : t.actions.useMyLocation}
@@ -49,7 +49,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
           type="button"
           onClick={onRefreshAirQuality}
           disabled={airLoading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+          className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
         >
           <RefreshCw
             aria-hidden="true"
@@ -69,7 +69,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
             type="button"
             aria-pressed={language === "en"}
             onClick={() => onChangeLanguage("en")}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+            className={`min-h-11 px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
               language === "en"
                 ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-700 hover:text-slate-900"
@@ -81,7 +81,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
             type="button"
             aria-pressed={language === "ta"}
             onClick={() => onChangeLanguage("ta")}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
+            className={`min-h-11 px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 ${
               language === "ta"
                 ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-700 hover:text-slate-900"
@@ -104,7 +104,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
                 <button
                   type="button"
                   onClick={signOutUser}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                  className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
                 >
                   <LogOut aria-hidden="true" className="w-3.5 h-3.5" />
                   {t.actions.signOut}
@@ -114,7 +114,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
               <button
                 type="button"
                 onClick={signInWithGoogle}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                className="min-h-11 inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
               >
                 <LogIn aria-hidden="true" className="w-3.5 h-3.5" />
                 {t.actions.signInGoogle}

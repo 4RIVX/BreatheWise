@@ -1,5 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "@fontsource-variable/dm-sans";
+import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/plus-jakarta-sans";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FirebaseProvider } from "./firebase/FirebaseProvider";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import type { UiLanguage } from "../domain/i18n";
+import { TRANSLATIONS, type UiLanguage } from "../domain/i18n";
 import type { HouseholdContext } from "../domain/schemas";
 import type { ActiveLocationState } from "../domain/airQualityTypes";
 import {
@@ -44,9 +44,10 @@ export function useHouseholdPreferences(params: {
     };
   }, [activeLocation.city, activeLocation.state, household]);
 
-  // Synchronize HTML root language attribute for assistive technologies (EN <-> TA)
+  // Keep the document language and title synchronized for assistive technology.
   useEffect(() => {
     document.documentElement.lang = household.language;
+    document.title = TRANSLATIONS[household.language].documentTitle;
   }, [household.language]);
 
   useEffect(() => {

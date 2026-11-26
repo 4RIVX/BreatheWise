@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { Header, type SectionId } from "./components/Header";
 import { WorkspaceToolbar } from "./components/WorkspaceToolbar";
 import { AirQualityDashboard } from "./components/AirQualityDashboard";
@@ -9,12 +9,17 @@ import { IndoorAirCoach } from "./components/IndoorAirCoach";
 import { EcoMobilityTracker } from "./components/EcoMobilityTracker";
 import { LowEmissionRoutines } from "./components/LowEmissionRoutines";
 import { CommunitySmogWatch } from "./components/CommunitySmogWatch";
-import { ReportSmogModal } from "./components/ReportSmogModal";
 import { TRANSLATIONS } from "./domain/i18n";
 import { useFirebase } from "./firebase/FirebaseProvider";
 import { useAirQualityData } from "./hooks/useAirQualityData";
 import { useFamilyGuardian } from "./hooks/useFamilyGuardian";
 import { useWorkspaceSync } from "./hooks/useWorkspaceSync";
+
+const ReportSmogModal = lazy(() =>
+  import("./components/ReportSmogModal").then((module) => ({
+    default: module.ReportSmogModal,
+  }))
+);
 
 export function App() {
   const { user, authReady, firebaseEnabled, getIdToken, signInWithGoogle } =
@@ -263,17 +268,19 @@ export function App() {
       </div>
 
       {reportModalOpen && (
-        <ReportSmogModal
-          open={reportModalOpen}
-          defaultCity={activeLocation.city}
-          defaultState={activeLocation.state}
-          isSignedIn={Boolean(user)}
-          onSignIn={signInWithGoogle}
-          getIdToken={getIdToken}
-          backgroundRef={appShellRef}
-          onClose={() => setReportModalOpen(false)}
-          onSubmit={handleCreateSmogReport}
-        />
+        <Suspense fallback={null}>
+          <ReportSmogModal
+            open={reportModalOpen}
+            defaultCity={activeLocation.city}
+            defaultState={activeLocation.state}
+            isSignedIn={Boolean(user)}
+            onSignIn={signInWithGoogle}
+            getIdToken={getIdToken}
+            backgroundRef={appShellRef}
+            onClose={() => setReportModalOpen(false)}
+            onSubmit={handleCreateSmogReport}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 ## 1. Architecture & Code Quality Improvements
 
 ### Backend Modularization & Reliability
+
 - Extracted Express route handlers out of `server/app.ts` into domain-focused routers:
   - `server/routes/healthRoutes.ts`
   - `server/routes/airQualityRoutes.ts`
@@ -14,6 +15,7 @@
 - Consolidated Gemini/Groq fallback orchestration into a unified `executeWithAiFallback` helper in `server/services/aiOrchestrator.ts`.
 
 ### Frontend Modularization, State Safety & TypeScript Strictness
+
 - Decomposed `src/App.tsx` orchestration and `useWorkspaceSync.ts` into single-responsibility hooks and storage modules:
   - `src/hooks/useAirQualityData.ts` (race-safe `AbortController` + request sequence guard + geolocation + `readJsonResponse`)
   - `src/hooks/useFamilyGuardian.ts` (`AbortController` + sequence guard + safe JSON error parsing)

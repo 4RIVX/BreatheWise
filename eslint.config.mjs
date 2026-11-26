@@ -7,6 +7,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      "dist-server/**",
       "node_modules/**",
       ".playwright-cli/**",
       "coverage/**",

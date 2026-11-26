@@ -291,8 +291,11 @@ describe("Express API Integration & Security Tests", () => {
     const productionCsp = productionResponse.headers["content-security-policy"];
 
     expect(productionCsp).toContain("default-src 'self'");
-    expect(productionCsp).toContain("style-src 'self' 'unsafe-inline'");
-    expect(productionCsp).toContain("frame-ancestors 'self'");
+    expect(productionCsp).toContain("style-src 'self'");
+    expect(productionCsp).toContain("style-src-attr 'unsafe-inline'");
+    expect(productionCsp).toContain("frame-ancestors 'none'");
+    expect(productionResponse.headers["cache-control"]).toBe("no-store");
+    expect(productionResponse.headers["x-powered-by"]).toBeUndefined();
 
     const developmentApp = createApp({
       config: { ...BASE_CONFIG, nodeEnv: "development" },

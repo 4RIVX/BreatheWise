@@ -4,6 +4,7 @@ import express, {
   type Request,
   type Response,
 } from "express";
+import compression from "compression";
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit, { type Store } from "express-rate-limit";
@@ -79,24 +80,28 @@ export function createApp(deps: AppDependencies = {}) {
   const verifyTokenFn = deps.verifyTokenFn ?? verifyBearerToken;
 
   const app = express();
+  app.disable("x-powered-by");
   app.set("trust proxy", 1);
+  app.use(compression());
 
   app.use(
     helmet({
       contentSecurityPolicy:
         config.nodeEnv === "production"
           ? {
-              useDefaults: true,
+              useDefaults: false,
               directives: {
                 "default-src": ["'self'"],
-                "script-src": ["'self'"],
-                "style-src": [
+                "script-src": ["'self'", "https://apis.google.com"],
+                "style-src": ["'self'"],
+                "style-src-attr": ["'unsafe-inline'"],
+                "font-src": ["'self'"],
+                "img-src": [
                   "'self'",
-                  "'unsafe-inline'",
-                  "https://fonts.googleapis.com",
+                  "data:",
+                  "blob:",
+                  "https://*.googleusercontent.com",
                 ],
-                "font-src": ["'self'", "https://fonts.gstatic.com"],
-                "img-src": ["'self'", "data:"],
                 "connect-src": [
                   "'self'",
                   "https://*.googleapis.com",
@@ -108,13 +113,21 @@ export function createApp(deps: AppDependencies = {}) {
                 ],
                 "object-src": ["'none'"],
                 "base-uri": ["'self'"],
-                "frame-ancestors": ["'self'"],
+                "form-action": ["'self'"],
+                "frame-ancestors": ["'none'"],
+                "upgrade-insecure-requests": [],
               },
             }
           : false,
       crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     })
   );
+
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  });
 
   app.use(
     cors({

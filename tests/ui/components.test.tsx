@@ -785,7 +785,7 @@ describe("BreatheWise UI Components & Accessibility", () => {
     openModalButtons[0].focus();
     fireEvent.click(openModalButtons[0]);
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
     const inertWrapper = container.querySelector("[inert]");
     expect(inertWrapper).not.toBeNull();
     expect(inertWrapper).toHaveAttribute("aria-hidden", "true");
