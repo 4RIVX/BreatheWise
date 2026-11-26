@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Firebase web API keys are public client identifiers, not server secrets."
+paths = ['''(^|/)firebase-applet-config\.json$''']
+regexTarget = "match"
+regexes = ['''AIza[0-9A-Za-z_-]{35}''']

@@ -1,0 +1,3 @@
+* text=auto eol=lf
+.gitignore text eol=crlf
+firestore.rules text eol=crlf

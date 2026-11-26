@@ -1,0 +1,67 @@
+name: BreatheWise CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Java for Firestore Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies from the frozen lockfile
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Check formatting
+        run: bun run format:check
+
+      - name: Run coverage suite
+        run: bun run test:coverage
+
+      - name: Run Firestore rules tests
+        run: bun run test:rules
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run browser accessibility tests
+        run: bun run test:e2e
+
+      - name: Build production assets and server
+        run: bun run build
+
+      - name: Audit dependencies
+        run: bun audit
+
+      - name: Scan secrets and repository history
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
