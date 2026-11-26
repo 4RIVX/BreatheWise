@@ -3,7 +3,7 @@
 ## 1. Architecture & Verified Capabilities
 
 - **Frontend (`src/`)**: React 19, TypeScript (`^5.9.3`), Vite 8, Tailwind CSS, English & Tamil localization (`src/domain/i18n.ts`), and modular single-responsibility sync hooks (`src/hooks/useHouseholdPreferences.ts`, `src/hooks/useRoutinesSync.ts`, `src/hooks/useSmogReports.ts`, `src/hooks/useEcoLogsSync.ts`, `src/hooks/workspaceStorage.ts`, composed via `src/hooks/useWorkspaceSync.ts`).
-- **Backend (`server.ts`, `server/`)**: Express 5 on Node.js 22, Helmet, exact-origin CORS allowlist in production (`server/config.ts`), topology-aware rate-limit enforcement (`DEPLOYMENT_TOPOLOGY=single-instance|multi-instance`, `REQUIRE_DISTRIBUTED_RATE_LIMIT`, HTTPS-validated Redis REST store in `server/utils/rateLimitStore.ts`), `sharp` (`^0.35.5`) binary image decoding/re-encoding (`server/utils/imageSanitizer.ts`), Zod schemas, and server-side TTL caching.
+- **Backend (`server.ts`, `server/`)**: Express 5 on Node.js `>=22.19.0` (pinned by `.nvmrc` and `.node-version`), Helmet, exact-origin CORS allowlist in production (`server/config.ts`), topology-aware rate-limit enforcement (`DEPLOYMENT_TOPOLOGY=single-instance|multi-instance`, `REQUIRE_DISTRIBUTED_RATE_LIMIT`, HTTPS-validated Redis REST store in `server/utils/rateLimitStore.ts`), `sharp` (`^0.35.5`) binary image decoding/re-encoding (`server/utils/imageSanitizer.ts`), Zod schemas, and server-side TTL caching.
 - **Firebase**: Provisioned project `data-blend-vc62s` (Firestore database `ai-studio-breathewise-0d124cc1-42ec-406c-8f70-0818ae6bbdeb`, `asia-south1`), hardened `firestore.rules` linted with `@firebase/eslint-plugin-security-rules`, and strict `email_verified === true` enforcement in token verification (`server/app.ts`).
 - **Environmental Data Separation**:
   - CPCB / data.gov.in results are pollutant-concentration snapshots for display; the feed has no dependable averaging-period metadata, so it is not described as an official 24-hour AQI. OpenAQ v3 hourly measurements are independently validated for freshness, alignment, and rolling-average completeness before the app calculates Indian AQI using CPCB methodology; upstream `provider`, `owner`, and `licenses` attribution is retained. Both measured sources are displayed separately from regional simulations (`server/providers/openMeteoProvider.ts`).
@@ -30,7 +30,7 @@
 - **Bundle & Memory**: Optimized production bundle (`5.3 MB` non-dependency workspace footprint excluding `node_modules` and `dist`, well below `10 MB`) with memoized client calculations and asynchronous request pipelining.
 
 ### 4. Testing
-- **Test Coverage**: 169 unit, integration, and UI tests across 18 files, plus 6 Firestore rules emulator tests and 2 Node pure-logic subtests. V8 coverage under Node `22.23.5` is `78.15%` Statements, `68.84%` Branches, `73.93%` Functions, and `80.32%` Lines, enforced by thresholds set one percentage point below the measured results.
+- **Test Coverage**: 188 unit, integration, and UI tests across 20 files, plus 6 Firestore rules emulator tests and 2 Node pure-logic subtests. V8 coverage under Node `22.23.5` is `78.77%` Statements, `69.83%` Branches, `74.14%` Functions, and `80.98%` Lines, enforced by thresholds set one percentage point below the measured results.
 - **Regression Suite**: Covers security boundary enforcement, rate-limit topology validation, workspace sync offline/sign-out/race guards, OpenAQ mixed-freshness validation, Indian national AQI rolling averages, eco-mobility emission accounting, indoor air safety logic, and UI modal focus/ARIA contracts.
 
 ### 5. Accessibility
@@ -49,7 +49,7 @@
 |---|---|---|
 | `bun run format:check` | `VERIFIED` | Prettier passes across application, server, unit, integration, UI, and rules tests. |
 | `bun run lint` (`tsc --noEmit && eslint .`) | `VERIFIED` | TypeScript and ESLint complete with no errors. |
-| Vitest `run --coverage` (Node `22.23.5`) | `VERIFIED` | 18 files, `169/169` tests passed; coverage `78.15%` Stmts / `68.84%` Branch / `73.93%` Funcs / `80.32%` Lines with an enforced one-point-lower gate. Host Node `20.20.0` is below the project's Node 22 requirement and cannot start Vitest workers. |
+| Vitest `run --coverage` (Node `22.23.5`) | `VERIFIED` | 20 files, `188/188` tests passed; coverage `78.77%` Stmts / `69.83%` Branch / `74.14%` Funcs / `80.98%` Lines with an enforced one-point-lower gate. Host Node `20.20.0` is below the project's Node `>=22.19.0` requirement and cannot start Vitest workers. |
 | `bun x tsx --test src/domain/pureLogic.node-test.ts` | `VERIFIED` | `2/2` subtests passed. |
 | `bun run build` | `VERIFIED` | Production build succeeds with React, Firebase, and app bundles separated; no chunk-size advisory. |
 | `bun audit` | `VERIFIED` | `0` vulnerabilities across `619` packages after pinning `@grpc/grpc-js` to `1.14.7`. |

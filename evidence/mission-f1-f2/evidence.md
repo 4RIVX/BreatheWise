@@ -44,7 +44,7 @@ Status Legend (strictly bounded):
 |---|---|---|---|
 | Lockfile Regeneration & Frozen Parity | `bun install --frozen-lockfile` | **Passed** | Bun v1.4.5 frozen check passed (`556 installs across 642 packages, no changes`). |
 | Dependency Security Audit | `bun audit` | **Passed (0 vulnerabilities)** | No known advisories across 619 packages. |
-| Unit, UI & Integration Tests | Vitest `run --coverage` (Node `22.23.5`) | **169/169 Passed** | 18 Vitest test files; coverage `78.15%` statements, `68.84%` branches, `73.93%` functions, and `80.32%` lines. |
+| Unit, UI & Integration Tests | Vitest `run --coverage` (Node `22.23.5`) | **188/188 Passed** | 20 Vitest test files; coverage `78.77%` statements, `69.83%` branches, `74.14%` functions, and `80.98%` lines. |
 | Firestore Rules Emulator | `bun run test:rules` | **6/6 Passed** | Firestore emulator started locally; adversarial access-control and atomicity cases passed. |
 | Node Pure Logic Test | `bun x tsx --test src/domain/pureLogic.node-test.ts` | **2/2 Passed** | Independent Node `node:test` verification. |
 | TypeScript & ESLint | `bun run lint` | **Passed** | 0 TypeScript and ESLint errors. |
@@ -52,5 +52,5 @@ Status Legend (strictly bounded):
 | Production Build | `bun run build` | **Passed** | React, Firebase, and app chunks emitted without a chunk-size advisory. |
 | Workspace Size Check | `du -sh --exclude=node_modules --exclude=dist .` | **3.5 MB** | Well below 10 MB competition threshold. |
 | Live Local Server & Browser UI | `curl /api/health` & `playwright-cli` (`1440x900` desktop + `#mobility`) | **LIVE-VERIFIED (0 console errors)** | Verified live health payload, CPCB unavailable state (`ECONNREFUSED`), Open-Meteo `126 Moderate`, and EcoMobility `"Illustrative Estimate"` + separated CEA grid factor / assumption notes in Chromium (`0` console errors/warnings). |
-| Test Coverage Report | Vitest `run --coverage` (Node `22.23.5`) | **Passed** | `78.15%` statements, `68.84%` branches, `73.93%` functions, `80.32%` lines; thresholds enforce a one-percentage-point margin below these measured figures. |
+| Test Coverage Report | Vitest `run --coverage` (Node `22.23.5`) | **Passed** | `78.77%` statements, `69.83%` branches, `74.14%` functions, `80.98%` lines; thresholds enforce a one-percentage-point margin below these measured figures. |
 | Firebase Emulator Suite | `bun run test:rules` | **Passed** | Firestore emulator completed all 6 rules tests successfully. |

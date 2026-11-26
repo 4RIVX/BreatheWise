@@ -28,7 +28,7 @@ All requested Mission F1 security hardening, server-verified environmental conte
    - `src/firebase/errorHandling.ts` sanitizes operational logs to redact user email addresses, full UIDs (`[REDACTED_UID]`), tenant IDs, and bearer tokens.
 
 ## 3. Verification Test Suite Results
-- **Vitest Unit, Integration & UI Tests**: `18` test files passed, `169/169` tests passed; coverage under Node `22.23.5`: `78.15%` statements, `68.84%` branches, `73.93%` functions, `80.32%` lines.
+- **Vitest Unit, Integration & UI Tests**: `20` test files passed, `188/188` tests passed; coverage under Node `22.23.5`: `78.77%` statements, `69.83%` branches, `74.14%` functions, `80.98%` lines.
 - **Firestore Rules Emulator Tests**: `6/6` adversarial rules tests passed.
 - **Node 22 Pure Logic Tests**: `2/2 passed` (`src/domain/pureLogic.node-test.ts`).
 - **Typecheck & ESLint (`bun run lint`)**: `0 errors`.
