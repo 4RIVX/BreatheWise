@@ -256,9 +256,14 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="mt-4 space-y-4"
+            aria-describedby={error ? "report-smog-error" : undefined}
+          >
             {error && (
               <div
+                id="report-smog-error"
                 role="alert"
                 className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800"
               >
@@ -317,6 +322,8 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 id="report-approx-location"
                 type="text"
                 required
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "report-smog-error" : undefined}
                 value={approximateLocation}
                 onChange={(e) => setApproximateLocation(e.target.value)}
                 placeholder="e.g., Near Velachery MRTS Flyover"
@@ -388,6 +395,8 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 id="report-description"
                 required
                 rows={3}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "report-smog-error" : undefined}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe visible smoke, odour, or dust conditions..."

@@ -6,7 +6,7 @@
 - **Backend (`server.ts`, `server/`)**: Express 5 on Node.js 22, Helmet, exact-origin CORS allowlist in production (`server/config.ts`), topology-aware rate-limit enforcement (`DEPLOYMENT_TOPOLOGY=single-instance|multi-instance`, `REQUIRE_DISTRIBUTED_RATE_LIMIT`, HTTPS-validated Redis REST store in `server/utils/rateLimitStore.ts`), `sharp` (`^0.35.5`) binary image decoding/re-encoding (`server/utils/imageSanitizer.ts`), Zod schemas, and server-side TTL caching.
 - **Firebase**: Provisioned project `data-blend-vc62s` (Firestore database `ai-studio-breathewise-0d124cc1-42ec-406c-8f70-0818ae6bbdeb`, `asia-south1`), hardened `firestore.rules` linted with `@firebase/eslint-plugin-security-rules`, and strict `email_verified === true` enforcement in token verification (`server/app.ts`).
 - **Environmental Data Separation**:
-  - Measured ground stations (`server/providers/cpcbProvider.ts` for `data.gov.in` resource `3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69`, and `server/providers/openAqProvider.ts` for OpenAQ v3 hourly measurements labelled `"OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology"` with upstream `provider`, `owner`, and `licenses` attribution) are displayed separately from regional simulations (`server/providers/openMeteoProvider.ts`).
+  - CPCB / data.gov.in results are pollutant-concentration snapshots for display; the feed has no dependable averaging-period metadata, so it is not described as an official 24-hour AQI. OpenAQ v3 hourly measurements are independently validated for freshness, alignment, and rolling-average completeness before the app calculates Indian AQI using CPCB methodology; upstream `provider`, `owner`, and `licenses` attribution is retained. Both measured sources are displayed separately from regional simulations (`server/providers/openMeteoProvider.ts`).
   - No synthetic AQI, station counts, or emission savings are fabricated when upstream telemetry is unavailable or incomplete.
 
 ---
@@ -30,16 +30,16 @@
 - **Bundle & Memory**: Optimized production bundle (`5.3 MB` non-dependency workspace footprint excluding `node_modules` and `dist`, well below `10 MB`) with memoized client calculations and asynchronous request pipelining.
 
 ### 4. Testing
-- **Test Coverage**: 159 unit, integration, and UI tests across 15 files (`bun run test`), plus 6 Firestore rules emulator tests (`bun run test:rules`) and 2 Node pure-logic subtests. V8 coverage is `77.77%` Statements, `68.51%` Branches, `73.71%` Functions, and `79.92%` Lines, enforced by thresholds set one percentage point below the measured results.
+- **Test Coverage**: 169 unit, integration, and UI tests across 18 files, plus 6 Firestore rules emulator tests and 2 Node pure-logic subtests. V8 coverage under Node `22.23.5` is `78.15%` Statements, `68.84%` Branches, `73.93%` Functions, and `80.32%` Lines, enforced by thresholds set one percentage point below the measured results.
 - **Regression Suite**: Covers security boundary enforcement, rate-limit topology validation, workspace sync offline/sign-out/race guards, OpenAQ mixed-freshness validation, Indian national AQI rolling averages, eco-mobility emission accounting, indoor air safety logic, and UI modal focus/ARIA contracts.
 
 ### 5. Accessibility
 - **Semantic HTML & ARIA**: Native interactive elements, modal dialog isolation (`inert` + `aria-hidden="true"` captured and restored cleanly around trigger focus restoration via `useDialogA11y`), Tab/Shift+Tab containment, `Escape` dismissal, body scroll lock, `prefers-reduced-motion` scroll behavior, per-report confirm accessible names with `role="status"` announcements, and WCAG AA text/SVG contrast (`slate-600+`).
-- **Live Browser & `axe-core` Verification**: Verified in headless Chromium via Playwright (`axe-core` WCAG 2.0/2.1/2.2 A/AA) with `0` violations at desktop (`1440x900`, `26` checks passed) and mobile (`390x844`, `27` checks passed), and zero horizontal overflow across `1440px`, `720px`, and `390px`.
+- **Live Browser & `axe-core` Verification**: Verified in headless Chromium via Playwright (`axe-core` WCAG 2.0/2.1/2.2 A/AA) with `0` violations at desktop (`1440x900`, `26` checks passed) and mobile (`390x844`, `27` checks passed), and zero horizontal overflow across `1440px`, `720px`, and `390px`. Repository axe tests also scan six previously untested component states at all impact levels (color contrast excluded in jsdom) and report zero violations.
 
 ### 6. Problem Statement Alignment
 - **Winter Smog Navigation**: Designed specifically to help families and communities navigate severe winter air pollution in Indian urban centers.
-- **Core Problem Features**: Real-time verified station monitoring, Open-Meteo regional forecasts, Family Protection Planner (vulnerable groups guidance), Indoor Air Purifier & ACH calculator, Low-Emission Routines & Eco-Mobility tracker (CEA v22.0 grid factors with illustrative estimate disclosures), and Community Smog Watch reporting with strict privacy protection.
+- **Core Problem Features**: CPCB pollutant-concentration snapshots, validated OpenAQ measured AQI, Open-Meteo regional forecasts, Family Protection Planner (vulnerable groups guidance), Indoor Air Purifier & ACH calculator, Low-Emission Routines & Eco-Mobility tracker (CEA v22.0 grid factors with illustrative estimate disclosures), and Community Smog Watch reporting with strict privacy protection.
 
 ---
 
@@ -49,9 +49,10 @@
 |---|---|---|
 | `bun run format:check` | `VERIFIED` | Prettier passes across application, server, unit, integration, UI, and rules tests. |
 | `bun run lint` (`tsc --noEmit && eslint .`) | `VERIFIED` | TypeScript and ESLint complete with no errors. |
-| `bun run test` & `bun run test:coverage` | `VERIFIED` | 15 files, `159/159` tests passed; coverage `77.77%` Stmts / `68.51%` Branch / `73.71%` Funcs / `79.92%` Lines with an enforced one-point-lower gate. |
+| Vitest `run --coverage` (Node `22.23.5`) | `VERIFIED` | 18 files, `169/169` tests passed; coverage `78.15%` Stmts / `68.84%` Branch / `73.93%` Funcs / `80.32%` Lines with an enforced one-point-lower gate. Host Node `20.20.0` is below the project's Node 22 requirement and cannot start Vitest workers. |
 | `bun x tsx --test src/domain/pureLogic.node-test.ts` | `VERIFIED` | `2/2` subtests passed. |
 | `bun run build` | `VERIFIED` | Production build succeeds with React, Firebase, and app bundles separated; no chunk-size advisory. |
 | `bun audit` | `VERIFIED` | `0` vulnerabilities across `619` packages after pinning `@grpc/grpc-js` to `1.14.7`. |
+| Remote PII history rewrite | `BLOCKED` | Local reachable history was rewritten, but the prior `git push --force origin main` was rejected with HTTP `403`; the remote still requires an owner-authorized rewrite. |
 | Live Browser + `axe-core` (`http://localhost:3000`) | `VERIFIED` | `0` console errors, `0` `axe-core` WCAG A/AA violations at `1440x900` & `390x844`, `<html lang="ta">` toggle verified, modal `inert` + focus trap + focus restoration verified, `0` overflow at `1440px`/`720px`/`390px`. Upstream CPCB (`ECONNREFUSED`) and live OpenAQ (`OPENAQ_API_KEY` unset) unavailable in container. |
 | Firebase Emulator Suite | `VERIFIED` | `bun run test:rules` started the Firestore emulator and passed all `6/6` rules tests. |

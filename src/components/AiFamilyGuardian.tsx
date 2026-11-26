@@ -160,7 +160,10 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
       id="guardian"
       className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch"
     >
-      <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 flex flex-col justify-between space-y-5">
+      <div
+        className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 flex flex-col justify-between space-y-5"
+        aria-busy={guidanceLoading}
+      >
         <div className="space-y-5">
           <div className="pb-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -237,7 +240,7 @@ export const AiFamilyGuardian: React.FC<AiFamilyGuardianProps> = ({
           )}
 
           {guidance && (
-            <div className="space-y-5">
+            <div className="space-y-5" aria-live="polite">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">
                   {guidance.headline}

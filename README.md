@@ -7,9 +7,9 @@ BreatheWise is an India-first environmental intelligence and household air-pollu
 ## Architecture & Core Modules
 
 1. **Air Quality Intelligence Dashboard (`src/components/AirQualityDashboard.tsx`, `server/providers/`)**
-   - **Measured Station Data (CPCB / data.gov.in)**: Adapter for official resource `3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69` using `DATA_GOV_IN_API_KEY`. Validates payloads via Zod, caches for 15 minutes, parses IST timestamps, detects stale readings (> 3 hours), and shows an explicit unavailable state when unconfigured or offline (never fabricates live station values).
+   - **CPCB / data.gov.in snapshots**: Adapter for official resource `3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69` using `DATA_GOV_IN_API_KEY`. It validates and displays reported pollutant concentrations, caches for 15 minutes, parses IST timestamps, and detects stale readings (> 3 hours); because the feed does not provide dependable averaging-period metadata, it is not presented as an official 24-hour AQI.
    - **Modelled Regional Forecast (Open-Meteo)**: Retrieves live hourly and current PM2.5, PM10, NO2, SO2, O3, CO, temperature, humidity, wind speed, and boundary-layer height from Open-Meteo, always labelled separately as atmospheric simulation rather than monitoring-station telemetry.
-   - **Official Indian National AQI Methodology (`src/domain/indianAqi.ts`)**: Implements CPCB 2014 breakpoints across `Good` (0–50), `Satisfactory` (51–100), `Moderate` (101–200), `Poor` (201–300), `Very Poor` (301–400), and `Severe` (401–500), unit conversions (`mg/m3`, `ug/m3`, `ppm`, `ppb`), 24h/8h averaging period checks, minimum 3-pollutant requirement, and mandatory particulate (`PM2.5` or `PM10`) enforcement.
+   - **Measured AQI from OpenAQ v3**: Computes Indian AQI using CPCB methodology only from OpenAQ hourly measurements that pass sensor freshness, alignment, rolling-average completeness, unit, and pollutant-count validation. `src/domain/indianAqi.ts` implements the CPCB 2014 breakpoints, unit conversions, required averaging periods, minimum 3-pollutant requirement, and mandatory particulate (`PM2.5` or `PM10`) check.
 
 2. **AI Family Guardian (`server/services/geminiService.ts`, `src/components/AiFamilyGuardian.tsx`)**
    - Server-side `@google/genai` calls using `GEMINI_API_KEY` and `GEMINI_MODEL` (default `gemini-4-hydrogen`).

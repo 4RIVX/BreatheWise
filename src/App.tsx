@@ -132,6 +132,7 @@ export function App() {
         <main
           id="main-content"
           tabIndex={-1}
+          aria-busy={airLoading}
           className="flex-1 max-w-[1280px] w-full mx-auto px-6 py-6 space-y-8 focus:outline-none"
         >
           <WorkspaceToolbar
@@ -160,6 +161,14 @@ export function App() {
               </button>
             </div>
           )}
+
+          <p className="sr-only" role="status" aria-live="polite">
+            {airLoading
+              ? "Loading air quality data."
+              : activeAqi !== null
+                ? `Air quality updated. Indian AQI ${activeAqi}, category ${activeCategory ?? "unknown"}.`
+                : "Air quality data is currently unavailable."}
+          </p>
 
           <AirQualityDashboard
             activeLocation={activeLocation}

@@ -379,6 +379,7 @@ export async function fetchCpcbStations(params: {
 }): Promise<CpcbProviderResponse> {
   const { city, state, apiKey, fetchImpl = fetch } = params;
   const fetchedAtIso = new Date().toISOString();
+  const deadline = Date.now() + 20_000;
 
   if (!apiKey) {
     return {
@@ -411,15 +412,17 @@ export async function fetchCpcbStations(params: {
     let totalRecordsReported: number | null = null;
 
     while (hasMore && offset < maxOffset) {
+      if (Date.now() >= deadline) {
+        paginationFailed = true;
+        break;
+      }
+
       const url = new URL(CPCB_BASE_URL);
       url.searchParams.set("api-key", apiKey);
       url.searchParams.set("format", "json");
       url.searchParams.set("limit", String(limit));
       url.searchParams.set("offset", String(offset));
       url.searchParams.set("filters[city]", city);
-      if (state) {
-        url.searchParams.set("filters[state]", state);
-      }
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
@@ -480,7 +483,7 @@ export async function fetchCpcbStations(params: {
       !paginationFailed &&
       !hasMore &&
       (totalRecordsReported === null ||
-        allRecords.length >= totalRecordsReported);
+        rawRecordsFetched >= totalRecordsReported);
 
     const stations = normalizeCpcbRecords(allRecords);
     if (stations.length === 0) {

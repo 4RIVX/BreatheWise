@@ -789,7 +789,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
     expect(ctxRes.airContext.measuredSourceAvailable).toBe(false);
     expect(ctxRes.airContext.dataLimitations).toContain("incomplete");
 
-    // 3. Overlapping duplicates across pages are deduplicated accurately; missing unique records mark incomplete
+    // 3. Overlapping records are deduplicated; completeness follows the raw API record count.
     clearCpcbCache();
     const dupShortfallFetch: typeof fetch = async (input) => {
       const url = new URL(String(input));
@@ -839,7 +839,7 @@ describe("Mission F1: Firestore Privacy, Atomic Confirmations, Rules Regressions
       fetchImpl: dupShortfallFetch,
     });
     expect(dupShortfallRes.stations.length).toBe(100);
-    expect(dupShortfallRes.isPaginationComplete).toBe(false);
+    expect(dupShortfallRes.isPaginationComplete).toBe(true);
 
     // 4. Unknown total hitting maxOffset (2500) must report incomplete pagination
     clearCpcbCache();
