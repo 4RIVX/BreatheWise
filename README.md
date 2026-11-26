@@ -51,6 +51,7 @@ BreatheWise is an India-first environmental intelligence and household air-pollu
 ## Quality & Verification Commands
 
 - Unit, integration, UI & accessibility tests: `bun run test`
+- Firestore security rules emulator tests: `bun run test:rules`
 - Code coverage report (`@vitest/coverage-v8`): `bun run test:coverage`
 - Pure-logic `node:test` check: `bun x tsx --test src/domain/pureLogic.node-test.ts`
 - TypeScript & ESLint (including `firestore.rules`): `bun run lint`

@@ -298,9 +298,8 @@ describe("Express API Integration & Security Tests", () => {
       config: { ...BASE_CONFIG, nodeEnv: "development" },
       enableRateLimit: false,
     });
-    const developmentResponse = await request(developmentApp).get(
-      "/api/health"
-    );
+    const developmentResponse =
+      await request(developmentApp).get("/api/health");
 
     expect(
       developmentResponse.headers["content-security-policy"]
@@ -314,9 +313,7 @@ describe("Express API Integration & Security Tests", () => {
       enableRateLimit: false,
     });
 
-    const response = await request(app)
-      .post("/api/gemini/guidance")
-      .send({});
+    const response = await request(app).post("/api/gemini/guidance").send({});
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: "Internal server error." });

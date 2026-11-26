@@ -26,6 +26,9 @@ firestore-debug*.log
 # Never commit AI Studio / cloud log exports
 public/assets/aistudio/
 
+# JetBrains IDE
+.idea/
+
 # Verification & OS artifacts
 .playwright-cli/
 .DS_Store
