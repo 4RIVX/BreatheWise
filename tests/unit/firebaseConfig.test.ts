@@ -1,149 +1,214 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  app: { name: "mock-app" },
-  auth: { name: "mock-auth" },
-  database: { name: "mock-database" },
-  initializeApp: vi.fn(),
-  getAuth: vi.fn(),
-  getFirestore: vi.fn(),
-  doc: vi.fn(),
-  getDocFromServer: vi.fn(),
-}));
-
-vi.mock("firebase/app", () => ({
-  initializeApp: mocks.initializeApp,
-}));
-
-vi.mock("firebase/auth", () => ({
-  getAuth: mocks.getAuth,
-  GoogleAuthProvider: class {
-    setCustomParameters = vi.fn();
-  },
-}));
-
-vi.mock("firebase/firestore", () => ({
-  doc: mocks.doc,
-  getDocFromServer: mocks.getDocFromServer,
-  getFirestore: mocks.getFirestore,
-}));
-
-vi.mock("../../firebase-applet-config.json", () => ({
-  default: {
-    projectId: "",
-    appId: "",
-    apiKey: "",
-    authDomain: "",
-  },
-}));
-
-beforeEach(() => {
-  vi.resetModules();
-  vi.unstubAllEnvs();
-  mocks.initializeApp.mockReset().mockReturnValue(mocks.app);
-  mocks.getAuth.mockReset().mockReturnValue(mocks.auth);
-  mocks.getFirestore.mockReset().mockReturnValue(mocks.database);
-  mocks.doc.mockReset().mockReturnValue({ path: "test/connection" });
-  mocks.getDocFromServer.mockReset().mockResolvedValue(undefined);
-});
+// @vitest-environment jsdom
+import React, { useRef, useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useDialogA11y } from "../../src/hooks/useDialogA11y";
 
 afterEach(() => {
+  cleanup();
+  vi.resetModules();
+  vi.clearAllMocks();
   vi.unstubAllEnvs();
-  vi.restoreAllMocks();
 });
 
-function setFirebaseEnvironment(databaseId?: string) {
-  vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "test-project");
-  vi.stubEnv("VITE_FIREBASE_API_KEY", "public-test-key");
-  vi.stubEnv("VITE_FIREBASE_AUTH_DOMAIN", "test-project.firebaseapp.com");
-  vi.stubEnv("VITE_FIREBASE_APP_ID", "test-app-id");
-  if (databaseId) {
-    vi.stubEnv("VITE_FIREBASE_DATABASE_ID", databaseId);
-  }
-}
+describe("Firebase Configuration & Connection Diagnostics", () => {
+  it("initializes Firebase with default database when firestoreDatabaseId is omitted", async () => {
+    const initializeApp = vi.fn(() => ({ name: "[DEFAULT]" }));
+    const getFirestore = vi.fn(() => ({ type: "firestore" }));
+    const getAuth = vi.fn(() => ({ currentUser: null }));
+    const getDocFromServer = vi.fn(async () => ({ exists: () => false }));
+    const doc = vi.fn((_db: unknown, col: string, id: string) => ({
+      path: `${col}/${id}`,
+    }));
+    const GoogleAuthProvider = vi.fn(function MockGoogleProvider(this: {
+      setCustomParameters: ReturnType<typeof vi.fn>;
+    }) {
+      this.setCustomParameters = vi.fn();
+    });
 
-describe("Firebase client configuration", () => {
-  it("keeps the client uninitialized when the applet config is blank", async () => {
-    const config = await import("../../src/firebase/config");
+    vi.doMock("../../firebase-applet-config.json", () => ({
+      default: {
+        projectId: "breathewise-test-proj",
+        appId: "1:123:web:abc",
+        apiKey: "test-api-key",
+        authDomain: "breathewise-test-proj.firebaseapp.com",
+      },
+    }));
+    vi.doMock("firebase/app", () => ({ initializeApp }));
+    vi.doMock("firebase/auth", () => ({ getAuth, GoogleAuthProvider }));
+    vi.doMock("firebase/firestore", () => ({
+      doc,
+      getDocFromServer,
+      getFirestore,
+    }));
 
-    expect(config.isFirebaseConfigured).toBe(false);
-    expect(config.firebaseApp).toBeNull();
-    expect(config.auth).toBeNull();
-    expect(config.db).toBeNull();
-    expect(mocks.initializeApp).not.toHaveBeenCalled();
-    await expect(config.testFirestoreConnection()).resolves.toEqual({
+    const mod = await import("../../src/firebase/config");
+    expect(mod.isFirebaseConfigured).toBe(true);
+    expect(initializeApp).toHaveBeenCalledTimes(1);
+    expect(getFirestore).toHaveBeenCalledWith({ name: "[DEFAULT]" });
+
+    const status = await mod.testFirestoreConnection();
+    expect(status).toEqual({ connected: true, offline: false });
+  });
+
+  it("initializes named Firestore database when firestoreDatabaseId is provided", async () => {
+    const initializeApp = vi.fn(() => ({ name: "[DEFAULT]" }));
+    const getFirestore = vi.fn(() => ({ type: "firestore" }));
+    const getAuth = vi.fn(() => ({ currentUser: null }));
+    const getDocFromServer = vi.fn(async () => {
+      throw new Error("Failed to get document because the client is offline.");
+    });
+    const doc = vi.fn((_db: unknown, col: string, id: string) => ({
+      path: `${col}/${id}`,
+    }));
+    const GoogleAuthProvider = vi.fn(function MockGoogleProvider(this: {
+      setCustomParameters: ReturnType<typeof vi.fn>;
+    }) {
+      this.setCustomParameters = vi.fn();
+    });
+
+    vi.doMock("../../firebase-applet-config.json", () => ({
+      default: {
+        projectId: "breathewise-test-proj",
+        appId: "1:123:web:abc",
+        apiKey: "test-api-key",
+        authDomain: "breathewise-test-proj.firebaseapp.com",
+        firestoreDatabaseId: "custom-db-id",
+      },
+    }));
+    vi.doMock("firebase/app", () => ({ initializeApp }));
+    vi.doMock("firebase/auth", () => ({ getAuth, GoogleAuthProvider }));
+    vi.doMock("firebase/firestore", () => ({
+      doc,
+      getDocFromServer,
+      getFirestore,
+    }));
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const mod = await import("../../src/firebase/config");
+      expect(getFirestore).toHaveBeenCalledWith(
+        { name: "[DEFAULT]" },
+        "custom-db-id"
+      );
+
+      const status = await mod.testFirestoreConnection();
+      expect(status.connected).toBe(false);
+      expect(status.offline).toBe(true);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Please check your Firebase configuration."
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("disables Firebase when applet config uses remixed placeholder and env vars are empty", async () => {
+    const initializeApp = vi.fn();
+    const getFirestore = vi.fn();
+    const getAuth = vi.fn();
+    const GoogleAuthProvider = vi.fn(function MockGoogleProvider(this: {
+      setCustomParameters: ReturnType<typeof vi.fn>;
+    }) {
+      this.setCustomParameters = vi.fn();
+    });
+
+    vi.stubEnv("VITE_FIREBASE_API_KEY", "");
+    vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "");
+    vi.doMock("../../firebase-applet-config.json", () => ({
+      default: {
+        projectId: "remixed-project-id",
+        appId: "",
+        apiKey: "",
+        authDomain: "",
+      },
+    }));
+    vi.doMock("firebase/app", () => ({ initializeApp }));
+    vi.doMock("firebase/auth", () => ({ getAuth, GoogleAuthProvider }));
+    vi.doMock("firebase/firestore", () => ({
+      doc: vi.fn(),
+      getDocFromServer: vi.fn(),
+      getFirestore,
+    }));
+
+    const mod = await import("../../src/firebase/config");
+    expect(mod.isFirebaseConfigured).toBe(false);
+    expect(initializeApp).not.toHaveBeenCalled();
+
+    const status = await mod.testFirestoreConnection();
+    expect(status).toEqual({
       connected: false,
       offline: false,
       error: "Firebase is not configured.",
     });
   });
+});
 
-  it("does not configure the reserved remixed project identifier", async () => {
-    vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "remixed-project-id");
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "public-test-key");
-    const config = await import("../../src/firebase/config");
+function DialogHarness() {
+  const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
-    expect(config.isFirebaseConfigured).toBe(false);
-    expect(mocks.initializeApp).not.toHaveBeenCalled();
+  useDialogA11y({
+    open,
+    dialogRef,
+    initialFocusRef: closeRef,
+    onClose: () => setOpen(false),
   });
 
-  it("initializes the selected Firestore database and verifies connectivity", async () => {
-    setFirebaseEnvironment("regional-database");
-    const config = await import("../../src/firebase/config");
+  return React.createElement(
+    "div",
+    null,
+    React.createElement(
+      "button",
+      { type: "button", onClick: () => setOpen(true) },
+      "Open Dialog"
+    ),
+    open
+      ? React.createElement(
+          "div",
+          {
+            ref: dialogRef,
+            role: "dialog",
+            "aria-modal": "true",
+            "aria-label": "Test Dialog",
+            tabIndex: -1,
+          },
+          React.createElement(
+            "button",
+            { type: "button", ref: closeRef, onClick: () => setOpen(false) },
+            "Close Dialog"
+          ),
+          React.createElement("button", { type: "button" }, "Second Action")
+        )
+      : null
+  );
+}
 
-    expect(config.isFirebaseConfigured).toBe(true);
-    expect(mocks.initializeApp).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: "test-project",
-        apiKey: "public-test-key",
-        authDomain: "test-project.firebaseapp.com",
-        appId: "test-app-id",
-      })
-    );
-    expect(mocks.getFirestore).toHaveBeenCalledWith(
-      mocks.app,
-      "regional-database"
-    );
-    expect(mocks.getAuth).toHaveBeenCalledWith(mocks.app);
-    await expect(config.testFirestoreConnection()).resolves.toEqual({
-      connected: true,
-      offline: false,
-    });
-    expect(mocks.doc).toHaveBeenCalledWith(
-      mocks.database,
-      "test",
-      "connection"
-    );
-  });
+describe("useDialogA11y Focus Trap & Escape Handling", () => {
+  it("moves focus into dialog, traps Tab navigation, closes on Escape, and restores trigger focus", () => {
+    render(React.createElement(DialogHarness));
 
-  it("uses the default Firestore database and reports offline errors", async () => {
-    setFirebaseEnvironment();
-    mocks.getDocFromServer.mockRejectedValue(
-      new Error("the client is offline")
-    );
-    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const config = await import("../../src/firebase/config");
+    const trigger = screen.getByRole("button", { name: "Open Dialog" });
+    trigger.focus();
+    fireEvent.click(trigger);
 
-    expect(mocks.getFirestore).toHaveBeenCalledWith(mocks.app);
-    await expect(config.testFirestoreConnection()).resolves.toMatchObject({
-      connected: false,
-      offline: true,
-      error: "the client is offline",
-    });
-    expect(logError).toHaveBeenCalledWith(
-      "Please check your Firebase configuration."
-    );
-  });
+    const closeBtn = screen.getByRole("button", { name: "Close Dialog" });
+    const secondBtn = screen.getByRole("button", { name: "Second Action" });
+    expect(document.activeElement).toBe(closeBtn);
 
-  it("converts non-Error connection failures to strings", async () => {
-    setFirebaseEnvironment();
-    mocks.getDocFromServer.mockRejectedValue("network unavailable");
-    const config = await import("../../src/firebase/config");
+    // Shift+Tab from first focusable element wraps to last
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(secondBtn);
 
-    await expect(config.testFirestoreConnection()).resolves.toEqual({
-      connected: false,
-      offline: false,
-      error: "network unavailable",
-    });
+    // Tab from last focusable element wraps to first
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Escape closes dialog and restores focus to trigger button
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
   });
 });

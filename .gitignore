@@ -25,6 +25,8 @@ firestore-debug*.log
 
 # Verification & OS artifacts
 .playwright-cli/
+test-results/
+playwright-report/
 .DS_Store
 Thumbs.db
 package-lock.json

@@ -1,25 +1,28 @@
-import { defineConfig, devices } from "@playwright/test";
+import fs from "node:fs";
+import { defineConfig } from "@playwright/test";
+
+const containerShellPath =
+  "/ms-playwright/chrome-headless-shell-linux64/chrome-headless-shell";
+const executablePath =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+  (fs.existsSync(containerShellPath) ? containerShellPath : undefined);
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  fullyParallel: false,
+  retries: 0,
+  timeout: 30_000,
   use: {
-    ...devices["Desktop Chrome"],
-    baseURL: "http://127.0.0.1:4174",
-    trace: "retain-on-failure",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000",
+    headless: true,
+    launchOptions: executablePath ? { executablePath } : undefined,
   },
-  webServer: {
-    command: "node --import tsx server.ts",
-    url: "http://127.0.0.1:4174/api/health",
-    env: {
-      ALLOWED_ORIGIN: "http://127.0.0.1:4174",
-      NODE_ENV: "development",
-      PORT: "4174",
-    },
-    reuseExistingServer: false,
-    timeout: 120_000,
-  },
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: "npm run start",
+        url: "http://127.0.0.1:3000/api/health",
+        reuseExistingServer: true,
+        timeout: 60_000,
+      },
 });
