@@ -165,12 +165,12 @@ describe("Firestore Privacy, Atomic Confirmations, Rules Regressions & Log Priva
       expect(loggedPayload).toContain("[REDACTED_UID]");
       expect(loggedPayload).toContain("permission-denied");
 
-      expect(
-        sanitizeOperationalText("Contact user@domain.org")
-      ).toContain("[REDACTED_EMAIL]");
-      expect(
-        sanitizeFirestorePath("users/abc123uid/ecoLogs/log1")
-      ).toBe("users/[REDACTED_UID]/ecoLogs/log1");
+      expect(sanitizeOperationalText("Contact user@domain.org")).toContain(
+        "[REDACTED_EMAIL]"
+      );
+      expect(sanitizeFirestorePath("users/abc123uid/ecoLogs/log1")).toBe(
+        "users/[REDACTED_UID]/ecoLogs/log1"
+      );
     } finally {
       errorSpy.mockRestore();
     }

@@ -278,18 +278,18 @@ describe("Express API Integration & Security Tests", () => {
   });
 
   it("validates ServerConfig strictly against invalid providers, wildcards, missing production origins, and missing production Redis", () => {
-    expect(() =>
-      loadServerConfig({ AI_PROVIDER: "unknown-llm" })
-    ).toThrow(/Invalid AI_PROVIDER/i);
+    expect(() => loadServerConfig({ AI_PROVIDER: "unknown-llm" })).toThrow(
+      /Invalid AI_PROVIDER/i
+    );
     expect(() =>
       loadServerConfig({
         AI_PROVIDER: "gemini",
         AI_FALLBACK_PROVIDER: "gemini",
       })
     ).toThrow(/cannot match/i);
-    expect(() =>
-      loadServerConfig({ ALLOWED_ORIGIN: "*" })
-    ).toThrow(/Wildcard/i);
+    expect(() => loadServerConfig({ ALLOWED_ORIGIN: "*" })).toThrow(
+      /Wildcard/i
+    );
     const defaultProdConfig = loadServerConfig({
       NODE_ENV: "production",
       ALLOWED_ORIGIN: "",
@@ -300,7 +300,9 @@ describe("Express API Integration & Security Tests", () => {
       NODE_ENV: "production",
       ALLOWED_ORIGIN: "https://breathewise.example",
     });
-    expect(redisFallbackProdConfig.allowedOrigins).toEqual(["https://breathewise.example"]);
+    expect(redisFallbackProdConfig.allowedOrigins).toEqual([
+      "https://breathewise.example",
+    ]);
 
     expect(() =>
       loadServerConfig({
@@ -543,7 +545,9 @@ describe("Express API Integration & Security Tests", () => {
       geminiClient: {
         models: {
           generateContent: async () => {
-            throw new Error("404 NOT_FOUND: invalid model name AIzaFakeKey1234567890");
+            throw new Error(
+              "404 NOT_FOUND: invalid model name AIzaFakeKey1234567890"
+            );
           },
         },
       },
@@ -581,7 +585,9 @@ describe("Express API Integration & Security Tests", () => {
       geminiClient: {
         models: {
           generateContent: async () => {
-            throw new Error("503 UNAVAILABLE: AIzaFakeKey1234567890 overloaded");
+            throw new Error(
+              "503 UNAVAILABLE: AIzaFakeKey1234567890 overloaded"
+            );
           },
         },
       },
@@ -620,7 +626,9 @@ describe("Express API Integration & Security Tests", () => {
       geminiClient: {
         models: {
           generateContent: async (params) => {
-            capturedGeminiSystem = String(params.config?.systemInstruction ?? "");
+            capturedGeminiSystem = String(
+              params.config?.systemInstruction ?? ""
+            );
             capturedGeminiContents = JSON.stringify(params.contents ?? "");
             return {
               text: "Based on Open-Meteo modelled PM2.5 of 42.5 ug/m3, limit vigorous jogging near heavy traffic.",
@@ -945,7 +953,11 @@ describe("Express API Integration & Security Tests", () => {
       restToken: "tok",
       fetchImpl: async () =>
         new Response(
-          JSON.stringify([{ result: 1 }, { error: "ERR syntax" }, { result: 1000 }]),
+          JSON.stringify([
+            { result: 1 },
+            { error: "ERR syntax" },
+            { result: 1000 },
+          ]),
           { status: 200 }
         ),
     });

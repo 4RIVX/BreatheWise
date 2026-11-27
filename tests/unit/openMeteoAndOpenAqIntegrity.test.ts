@@ -67,9 +67,9 @@ describe("Open-Meteo & OpenAQ Provider Integrity", () => {
         wind_speed_10m: [12.5], // length mismatch
       },
     };
-    expect(OpenMeteoWeatherSchema.safeParse(weatherInvalidPayload).success).toBe(
-      false
-    );
+    expect(
+      OpenMeteoWeatherSchema.safeParse(weatherInvalidPayload).success
+    ).toBe(false);
 
     // 5. Rejects hourly gaps > 1 hour
     const gappedPayload = {
@@ -346,9 +346,9 @@ describe("Open-Meteo & OpenAQ Provider Integrity", () => {
     expect(verifiedFromOpenAq.airContext.measuredSourceLabel).toBe(
       "OpenAQ Hourly Monitoring Measurements — AQI Calculated Using CPCB Methodology"
     );
-    expect(
-      verifiedFromOpenAq.airContext.measuredProviderAttribution
-    ).toContain("CAIR / Tamil Nadu");
+    expect(verifiedFromOpenAq.airContext.measuredProviderAttribution).toContain(
+      "CAIR / Tamil Nadu"
+    );
     expect(verifiedFromOpenAq.airContext.measuredAqi).toBe(100);
   });
 

@@ -228,7 +228,9 @@ describe("Indian National AQI Methodology (CPCB)", () => {
 
     expect(result.calculable).toBe(false);
     expect(result.validPollutantCount).toBe(0);
-    expect(result.reasonIfNotCalculable).toContain("missing hourly observation count");
+    expect(result.reasonIfNotCalculable).toContain(
+      "missing hourly observation count"
+    );
   });
 
   it("computes time-bounded rolling averages strictly within windowHours despite gaps", () => {
@@ -347,6 +349,8 @@ describe("Indian National AQI Methodology (CPCB)", () => {
       },
     ]);
     expect(insufficientRes.calculable).toBe(false);
-    expect(insufficientRes.reasonIfNotCalculable).toContain("minimum 16h required");
+    expect(insufficientRes.reasonIfNotCalculable).toContain(
+      "minimum 16h required"
+    );
   });
 });

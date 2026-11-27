@@ -3,13 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
     "start": "tsx server.ts",
+    "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit && eslint .",
     "test": "vitest run",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" server.ts \"server/**/*.ts\""
+    "test:coverage": "vitest run --coverage",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" server.ts \"server/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" server.ts \"server/**/*.ts\""
   },
   "dependencies": {
     "sharp": "^0.35.5",
@@ -48,5 +57,8 @@
     "vite": "^8.3.8",
     "vitest": "^5.1.1",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^5.1.2"
   }
 }
