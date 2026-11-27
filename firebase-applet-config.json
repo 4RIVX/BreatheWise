@@ -1,12 +1,21 @@
-{
-  "projectId": "data-blend-vc62s",
-  "appId": "1:586843551515:web:174f3cc39ee423a44705be",
-  "apiKey": "AIzaSyA3sqNSKWYvAYorqSFoq9xlXZ6_GiGyljo",
-  "authDomain": "data-blend-vc62s.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-breathewise-0d124cc1-42ec-406c-8f70-0818ae6bbdeb",
-  "storageBucket": "data-blend-vc62s.firebasestorage.app",
-  "messagingSenderId": "586843551515",
-  "measurementId": "",
-  "oAuthClientId": "586843551515-antufb08bpa75gnatui6fm7irbsd704p.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
-}
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBUl4LeQWCMpVTI8AA1JtCYgpw9QhiIaao",
+  authDomain: "breathewise-ca0ab.firebaseapp.com",
+  projectId: "breathewise-ca0ab",
+  storageBucket: "breathewise-ca0ab.firebasestorage.app",
+  messagingSenderId: "76142532800",
+  appId: "1:76142532800:web:cda48a01fb0b8d84257525",
+  measurementId: "G-ZV7EMKTVTW"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
