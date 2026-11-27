@@ -240,14 +240,31 @@ export function createRateLimitStore(
   fetchImpl: typeof fetch = fetch,
   prefix?: string
 ): Store {
+  const hasRedisCredentials =
+    Boolean(config.rateLimitRedisRestUrl) &&
+    Boolean(config.rateLimitRedisRestToken);
+  const distributedRateLimitRequired =
+    config.deploymentTopology === "multi-instance" ||
+    config.requireDistributedRateLimit;
+
+  if (
+    config.nodeEnv === "production" &&
+    distributedRateLimitRequired &&
+    !hasRedisCredentials
+  ) {
+    throw new DistributedRateLimitUnavailableError(
+      "Distributed Redis rate limiting is required for this production deployment."
+    );
+  }
+
   if (config.nodeEnv === "production") {
-    if (!config.rateLimitRedisRestUrl || !config.rateLimitRedisRestToken) {
+    if (!hasRedisCredentials) {
       console.warn(
         "WARNING: Distributed Redis rate-limit store is not configured in production. Falling back to in-memory rate limiter."
       );
     }
   }
-  if (config.rateLimitRedisRestUrl && config.rateLimitRedisRestToken) {
+  if (hasRedisCredentials) {
     return new RedisRestRateLimitStore({
       restUrl: config.rateLimitRedisRestUrl,
       restToken: config.rateLimitRedisRestToken,

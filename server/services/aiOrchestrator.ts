@@ -265,7 +265,11 @@ export async function runGuidanceWithFallback(params: {
         provider: fallbackProvider,
         model: secondaryModel,
         fallbackUsed: true,
-        fallbackReason: `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`,
+        fallbackReason:
+          `Primary ${capitalizeProvider(primaryProvider)} (${primaryModel}) unavailable: ${primaryError}`.slice(
+            0,
+            300
+          ),
       };
     } catch (secErr) {
       const secondaryError = sanitizeProviderError(secErr);

@@ -80,6 +80,11 @@ export function App() {
     return DEFAULT_HOUSEHOLD;
   });
 
+  useEffect(() => {
+    document.documentElement.lang = household.language;
+    document.title = TRANSLATIONS[household.language].documentTitle;
+  }, [household.language]);
+
   const [measured, setMeasured] = useState<MeasuredBlock | null>(null);
   const [modelled, setModelled] = useState<ModelledBlock | null>(null);
   const [selectedCpcbIndex, setSelectedCpcbIndex] = useState(0);
@@ -547,6 +552,8 @@ export function App() {
     }
   };
 
+  const closeReportModal = useCallback(() => setReportModalOpen(false), []);
+
   const activeAqi =
     activeCpcbStation?.indianAqi.aqi ??
     modelled?.indianAqiFromRollingModel.aqi ??
@@ -558,6 +565,12 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:text-slate-900 focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       <Header
         activeSection={activeSection}
         onNavigate={handleNavigate}
@@ -565,7 +578,11 @@ export function App() {
         t={t}
       />
 
-      <main className="flex-1 max-w-[1280px] w-full mx-auto px-6 py-6 space-y-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 max-w-[1280px] w-full mx-auto px-6 py-6 space-y-8"
+      >
         <WorkspaceToolbar
           language={household.language}
           onChangeLanguage={handleLanguageChange}
@@ -676,7 +693,7 @@ export function App() {
           isSignedIn={Boolean(user)}
           onSignIn={signInWithGoogle}
           getIdToken={getIdToken}
-          onClose={() => setReportModalOpen(false)}
+          onClose={closeReportModal}
           onSubmit={handleCreateSmogReport}
         />
       )}

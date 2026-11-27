@@ -95,12 +95,13 @@ test("header, toolbar, and modal actions meet 44px touch targets", async ({
   }
 
   await header.getByRole("button", { name: "Report Smog" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
   await expectMinimumTouchTarget(
-    page.getByRole("button", { name: "Close modal" })
+    dialog.getByRole("button", { name: "Close modal" })
   );
   await expectMinimumTouchTarget(
-    page.getByRole("button", { name: "Sign in with Google" })
+    dialog.getByRole("button", { name: "Sign in with Google" })
   );
 });
 

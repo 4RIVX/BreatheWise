@@ -6,7 +6,7 @@ import {
   getFirestore,
   type Firestore,
 } from "firebase/firestore";
-import appletConfig from "../../firebase-applet-config.json";
+import importedAppletConfig from "../../firebase-applet-config.json";
 
 interface RawFirebaseConfig {
   projectId: string;
@@ -17,6 +17,8 @@ interface RawFirebaseConfig {
   storageBucket?: string;
   messagingSenderId?: string;
 }
+
+const appletConfig = importedAppletConfig as RawFirebaseConfig;
 
 const hasValidAppletConfig = Boolean(
   appletConfig.projectId &&

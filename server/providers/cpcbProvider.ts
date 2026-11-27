@@ -389,6 +389,7 @@ export async function fetchCpcbStations(params: {
       stations: [],
       cached: false,
       fetchedAtIso,
+      isPaginationComplete: true,
     };
   }
 
@@ -408,17 +409,19 @@ export async function fetchCpcbStations(params: {
     let hasMore = true;
     let paginationFailed = false;
     let totalRecordsReported: number | null = null;
+    const paginationStartedAt = Date.now();
 
-    while (hasMore && offset < maxOffset) {
+    while (
+      hasMore &&
+      offset < maxOffset &&
+      Date.now() - paginationStartedAt < 20_000
+    ) {
       const url = new URL(CPCB_BASE_URL);
       url.searchParams.set("api-key", apiKey);
       url.searchParams.set("format", "json");
       url.searchParams.set("limit", String(limit));
       url.searchParams.set("offset", String(offset));
       url.searchParams.set("filters[city]", city);
-      if (state) {
-        url.searchParams.set("filters[state]", state);
-      }
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);

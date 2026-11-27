@@ -39,6 +39,9 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
   const [journeys, setJourneys] = useState<number>(10);
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [saveFeedbackRole, setSaveFeedbackRole] = useState<"alert" | "status">(
+    "status"
+  );
 
   const origFactor = EMISSION_FACTORS_INDIA[originalMode];
   const altFactor = EMISSION_FACTORS_INDIA[alternativeMode];
@@ -79,10 +82,12 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
         factorVersion: `${impact.originalFactor.factorVersion}/${impact.alternativeFactor.factorVersion}`,
       });
       setSaveFeedback("Commute comparison saved to your Firestore log.");
+      setSaveFeedbackRole("status");
     } catch (err) {
       setSaveFeedback(
         err instanceof Error ? err.message : "Could not save trip log."
       );
+      setSaveFeedbackRole("alert");
     } finally {
       setSaving(false);
     }
@@ -124,7 +129,12 @@ export const EcoMobilityTracker: React.FC<EcoMobilityTrackerProps> = ({
       </div>
 
       {saveFeedback && (
-        <p className="text-xs text-teal-800 font-medium">{saveFeedback}</p>
+        <p
+          role={saveFeedbackRole}
+          className="text-xs text-teal-800 font-medium"
+        >
+          {saveFeedback}
+        </p>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

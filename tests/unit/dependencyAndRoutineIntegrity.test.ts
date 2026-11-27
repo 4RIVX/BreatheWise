@@ -18,13 +18,14 @@ describe("Dependency Parity & Default Routine Integrity", () => {
     }
   });
 
-  it("enforces dependency parity for sharp >=0.35.5 and typescript ^5.9.3 and keeps .gitignore present", () => {
+  it("keeps runtime and build dependencies in the correct sections and preserves .gitignore", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")
     );
     expect(fs.existsSync(path.resolve(process.cwd(), ".gitignore"))).toBe(true);
     expect(pkg.dependencies.sharp).toBe("^0.35.5");
-    expect(pkg.dependencies.typescript).toBe("^5.9.3");
+    expect(pkg.devDependencies.typescript).toBe("^5.9.3");
+    expect(pkg.dependencies.typescript).toBeUndefined();
 
     const npmLockPath = path.resolve(process.cwd(), "package-lock.json");
     if (fs.existsSync(npmLockPath)) {

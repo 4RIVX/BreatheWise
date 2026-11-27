@@ -47,6 +47,9 @@ const BASE_CONFIG: ServerConfig = {
   allowedOrigins: ["http://localhost:3000"],
   rateLimitRedisRestUrl: "",
   rateLimitRedisRestToken: "",
+  deploymentTopology: "single-instance",
+  requireDistributedRateLimit: false,
+  rateLimitMode: "single-instance-memory",
   aiAnonymousRateLimitMax: 6,
   aiAuthenticatedRateLimitMax: 20,
   requireAiAuth: false,
@@ -324,6 +327,15 @@ describe("Express API Integration & Security Tests", () => {
     });
     expect(prodConfig.allowedOrigins).toEqual(["https://breathewise.example"]);
     expect(prodConfig.aiFallbackProvider).toBe("groq");
+    expect(prodConfig.deploymentTopology).toBe("single-instance");
+    expect(prodConfig.rateLimitMode).toBe("distributed-redis");
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        ALLOWED_ORIGIN: "https://breathewise.example",
+        DEPLOYMENT_TOPOLOGY: "multi-instance",
+      })
+    ).toThrow(/Distributed Redis rate limiting is required/i);
   });
 
   it("enforces exact CORS origin allowlist and rejects arbitrary *.run.app origins", async () => {

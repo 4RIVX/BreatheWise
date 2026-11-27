@@ -18,7 +18,13 @@ import {
 } from "firebase/firestore";
 import { db } from "./config";
 import { handleFirestoreError, OperationType } from "./errorHandling";
-import type { HouseholdContext, SmogSourceCategory } from "../domain/schemas";
+import {
+  HouseholdContextSchema,
+  SmogCategorySchema,
+  SmogSeveritySchema,
+  type HouseholdContext,
+  type SmogSourceCategory,
+} from "../domain/schemas";
 
 export interface UserProfileRecord extends HouseholdContext {
   uid: string;
@@ -79,6 +85,25 @@ function timestampToIso(val: unknown): string {
   return new Date().toISOString();
 }
 
+function finiteNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function routineCategory(value: unknown): FirestoreRoutineItem["category"] {
+  const categories: FirestoreRoutineItem["category"][] = [
+    "Mobility",
+    "Heating",
+    "Ventilation",
+    "Community",
+    "Energy",
+    "Waste",
+  ];
+  return categories.includes(value as FirestoreRoutineItem["category"])
+    ? (value as FirestoreRoutineItem["category"])
+    : "Community";
+}
+
 export async function ensureUserProfile(
   user: User,
   defaults: {
@@ -95,19 +120,31 @@ export async function ensureUserProfile(
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const data = snap.data();
+      const household = HouseholdContextSchema.safeParse(data);
+      if (
+        !household.success ||
+        typeof data.city !== "string" ||
+        typeof data.state !== "string"
+      ) {
+        return {
+          uid: user.uid,
+          email: user.email ?? "",
+          displayName: user.displayName ?? "BreatheWise Member",
+          city: defaults.city,
+          state: defaults.state,
+          ...defaults.household,
+        };
+      }
       return {
-        uid: String(data.uid),
-        email: String(data.email),
-        displayName: String(data.displayName),
-        city: String(data.city),
-        state: String(data.state),
-        profileId: data.profileId,
-        householdSize: Number(data.householdSize),
-        commutePreference: data.commutePreference,
-        outdoorSchedule: data.outdoorSchedule,
-        hasHepaPurifier: Boolean(data.hasHepaPurifier),
-        purifierCadrM3h: Number(data.purifierCadrM3h),
-        language: data.language,
+        uid: typeof data.uid === "string" ? data.uid : user.uid,
+        email: typeof data.email === "string" ? data.email : (user.email ?? ""),
+        displayName:
+          typeof data.displayName === "string"
+            ? data.displayName
+            : (user.displayName ?? "BreatheWise Member"),
+        city: data.city,
+        state: data.state,
+        ...household.data,
       };
     }
 
@@ -201,11 +238,11 @@ export function subscribeToUserRoutines(
           uid: String(data.uid),
           title: String(data.title),
           description: String(data.description),
-          category: data.category,
-          co2SavedKg: Number(data.co2SavedKg),
+          category: routineCategory(data.category),
+          co2SavedKg: finiteNumber(data.co2SavedKg),
           exposureNote: String(data.exposureNote),
           completedToday: Boolean(data.completedToday),
-          weeklyCompletions: Number(data.weeklyCompletions),
+          weeklyCompletions: finiteNumber(data.weeklyCompletions),
         };
       });
       onData(rows);
@@ -280,13 +317,20 @@ export function mapPublicSmogReportDoc(
     city: String(data.city),
     state: String(data.state),
     approximateLocation: String(data.approximateLocation),
-    sourceCategory: data.sourceCategory as SmogSourceCategory,
-    severity: data.severity as FirestoreSmogReport["severity"],
+    sourceCategory: SmogCategorySchema.safeParse(data.sourceCategory).success
+      ? (data.sourceCategory as SmogSourceCategory)
+      : "Other",
+    severity: SmogSeveritySchema.safeParse(data.severity).success
+      ? (data.severity as FirestoreSmogReport["severity"])
+      : "Moderate",
     description: String(data.description),
     observedTimeLabel: String(data.observedTimeLabel),
     moderationStatus:
-      data.moderationStatus as FirestoreSmogReport["moderationStatus"],
-    confirmationsCount: Number(data.confirmationsCount),
+      data.moderationStatus === "REVIEWED" ||
+      data.moderationStatus === "FLAGGED"
+        ? data.moderationStatus
+        : "UNVERIFIED",
+    confirmationsCount: Math.max(0, finiteNumber(data.confirmationsCount)),
     photoDataUrl:
       typeof data.photoDataUrl === "string" ? data.photoDataUrl : undefined,
     createdAtIso: timestampToIso(data.createdAt),

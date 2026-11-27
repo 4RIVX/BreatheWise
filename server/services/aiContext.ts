@@ -51,6 +51,18 @@ export function sanitizeUserQuestion(raw: string): string {
   );
 }
 
+export function sanitizeLocationLabel(raw: string): string {
+  return Array.from(raw, (character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127 ? " " : character;
+  })
+    .join("")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
 export function sanitizeProviderError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   let normalized = raw;
@@ -85,13 +97,15 @@ export function buildContextSummary(
   airContext: VerifiedAirContext,
   household: HouseholdContext
 ): string {
+  const locationLabel = sanitizeLocationLabel(airContext.locationLabel);
+  const state = airContext.state ? sanitizeLocationLabel(airContext.state) : "";
   const isOpenAq = airContext.measuredSourceLabel?.includes("OpenAQ") ?? false;
   const stationPrefix = isOpenAq
     ? `OPENAQ HOURLY MONITORING MEASUREMENTS — AQI CALCULATED USING CPCB METHODOLOGY (${airContext.measuredStationName ?? "Unnamed"}${airContext.measuredProviderAttribution ? `; ${airContext.measuredProviderAttribution}` : ""})`
     : `OFFICIAL CPCB STATION (${airContext.measuredStationName ?? "Unnamed"})`;
 
   const lines: string[] = [
-    `LOCATION: ${airContext.locationLabel}${airContext.state ? `, ${airContext.state}` : ""}`,
+    `LOCATION: ${locationLabel}${state ? `, ${state}` : ""}`,
     airContext.measuredSourceAvailable
       ? `${stationPrefix}: AQI ${airContext.measuredAqi ?? "Unavailable"} (${airContext.measuredAqiCategory ?? "N/A"}), Timestamp: ${airContext.measuredTimestamp ?? "Unknown"}`
       : "OFFICIAL CPCB STATION: Unavailable (do NOT fabricate station measurements).",

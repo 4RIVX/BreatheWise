@@ -28,6 +28,15 @@ vi.mock("firebase/firestore", () => ({
   getFirestore: mocks.getFirestore,
 }));
 
+vi.mock("../../firebase-applet-config.json", () => ({
+  default: {
+    projectId: "",
+    appId: "",
+    apiKey: "",
+    authDomain: "",
+  },
+}));
+
 beforeEach(() => {
   vi.resetModules();
   vi.unstubAllEnvs();

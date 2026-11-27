@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { X } from "lucide-react";
 import { INDIAN_STATES } from "../domain/indianCities";
 import type { SmogSourceCategory } from "../domain/schemas";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 interface ReportSmogModalProps {
   open: boolean;
@@ -85,6 +86,16 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
   const [photoStatus, setPhotoStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useDialogA11y({
+    open,
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+    onClose,
+  });
 
   if (!open) return null;
 
@@ -92,6 +103,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
+    setFieldError(false);
     setPhotoStatus("Sanitizing image & stripping EXIF/GPS metadata...");
     try {
       const compactDataUrl = await compressFileToDataUrl(file);
@@ -129,6 +141,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
     e.preventDefault();
     if (!isSignedIn) {
       setError("Please sign in with Google before submitting a smog report.");
+      setFieldError(false);
       return;
     }
     if (
@@ -138,11 +151,13 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
       setError(
         "Please provide an approximate location and at least 5 characters of observation notes."
       );
+      setFieldError(true);
       return;
     }
 
     setSubmitting(true);
     setError(null);
+    setFieldError(false);
     try {
       await onSubmit({
         city: city.trim(),
@@ -163,6 +178,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
       setError(
         err instanceof Error ? err.message : "Failed to submit smog report."
       );
+      setFieldError(true);
     } finally {
       setSubmitting(false);
     }
@@ -170,10 +186,12 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="report-modal-title"
+      tabIndex={-1}
     >
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-slate-200">
@@ -192,8 +210,9 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            ref={closeButtonRef}
             aria-label="Close modal"
-            className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
+            className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -208,15 +227,20 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
             <button
               type="button"
               onClick={onSignIn}
-              className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+              className="min-h-11 px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
             >
               Sign in with Google
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="mt-4 space-y-4"
+            aria-describedby={error ? "report-form-error" : undefined}
+          >
             {error && (
               <div
+                id="report-form-error"
                 role="alert"
                 className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800"
               >
@@ -275,6 +299,8 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 id="report-approx-location"
                 type="text"
                 required
+                aria-invalid={fieldError || undefined}
+                aria-describedby={fieldError ? "report-form-error" : undefined}
                 value={approximateLocation}
                 onChange={(e) => setApproximateLocation(e.target.value)}
                 placeholder="e.g., Near Velachery MRTS Flyover"
@@ -316,7 +342,7 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                       key={sev}
                       type="button"
                       onClick={() => setSeverity(sev)}
-                      className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                      className={`min-h-11 px-2 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                         severity === sev
                           ? "bg-white text-slate-900 shadow-sm"
                           : "text-slate-600"
@@ -340,6 +366,8 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
                 id="report-description"
                 required
                 rows={3}
+                aria-invalid={fieldError || undefined}
+                aria-describedby={fieldError ? "report-form-error" : undefined}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe visible smoke, odour, or dust conditions..."
@@ -383,21 +411,23 @@ export const ReportSmogModal: React.FC<ReportSmogModalProps> = ({
             </div>
 
             {photoStatus && (
-              <p className="text-xs text-teal-800">{photoStatus}</p>
+              <p role="status" className="text-xs text-teal-800">
+                {photoStatus}
+              </p>
             )}
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                className="min-h-11 px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                className="min-h-11 px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
               >
                 {submitting ? "Submitting..." : "Submit Report"}
               </button>
